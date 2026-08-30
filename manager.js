@@ -248,3 +248,53 @@ async function loadCorrections(){
     </div>
   `;
 }
+async function loadCorrections(){
+  const panel=document.getElementById("corrections");
+
+  panel.innerHTML=`
+    <div class="card">
+      <h2>Time corrections</h2>
+      <p class="muted">Select an employee and date to view or correct their clocking times.</p>
+
+      <label>Employee</label>
+      <select id="correctionEmployee">
+        <option value="">Select employee</option>
+      </select>
+
+      <label>Date</label>
+      <input id="correctionDate" type="date">
+
+      <button class="btn" id="loadCorrectionsBtn">Load times</button>
+
+      <div id="correctionsContent" style="margin-top:20px"></div>
+    </div>
+  `;
+
+  const employees=await api("/api/manager/employees");
+
+  const select=document.getElementById("correctionEmployee");
+
+  employees.forEach(e=>{
+    const option=document.createElement("option");
+    option.value=e.id;
+    option.textContent=e.name;
+    select.appendChild(option);
+  });
+
+  document.getElementById("correctionDate").value=
+    new Date().toISOString().slice(0,10);
+
+  document.getElementById("loadCorrectionsBtn").onclick=()=>{
+    const employeeId=select.value;
+    const date=document.getElementById("correctionDate").value;
+
+    if(!employeeId || !date){
+      document.getElementById("correctionsContent").innerHTML=
+        '<div class="error">Please select an employee and date.</div>';
+      return;
+    }
+
+    document.getElementById("correctionsContent").innerHTML=
+      "<p>Ready to load clocking times.</p>";
+  };
+}
