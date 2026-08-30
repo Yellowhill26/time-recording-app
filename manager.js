@@ -102,7 +102,7 @@ async function loadSchedule(){
 
         ${d.map(r=>`
           <tr>
-            <td>${days[r.day_of_week]}</td>
+            <td>${days[r.day_of_week-1]}</td>
             <td><input type="checkbox" id="work${r.day_of_week}" ${r.is_working_day?"checked":""}></td>
             <td><input type="time" id="start${r.day_of_week}" value="${r.normal_start_time||""}"></td>
             <td><input type="time" id="finish${r.day_of_week}" value="${r.automatic_finish_time||""}"></td>
