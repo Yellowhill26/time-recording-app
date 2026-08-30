@@ -35,7 +35,64 @@ let email=(process.env.ADMIN_EMAIL||"").trim().toLowerCase(),pass=process.env.AD
 async function emp(req){let t=req.get("x-device-token")||req.body?.deviceToken;if(!t)return null;let r=await q(`SELECT e.*,d.id device_id FROM employee_devices d JOIN employees e ON e.id=d.employee_id WHERE d.token_hash=$1 AND d.revoked_at IS NULL AND e.is_active=TRUE`,[sha(t)]);if(!r.rows.length)return null;await q(`UPDATE employee_devices SET last_seen_at=NOW() WHERE id=$1`,[r.rows[0].device_id]);return r.rows[0]}
 function manager(req,res,next){if(!req.session.managerId)return res.status(401).json({error:"Manager login required"});next()}
 async function state(id){let r=await q(`SELECT event_type FROM clock_events WHERE employee_id=$1 ORDER BY event_time DESC LIMIT 1`,[id]);if(!r.rows.length)return"off";return ["clock_in","break_end"].includes(r.rows[0].event_type)?"working":r.rows[0].event_type==="break_start"?"break":"off"}
-function worked(events){let total=0,start=null,bs=null;for(const e of events){let t=new Date(e.event_time);if(e.event_type==="clock_in")start=t;else if(e.event_type==="break_start"&&start&&!bs)bs=t;else if(e.event_type==="break_end"&&bs){total-=Math.max(0,Math.round((t-bs)/60000));bs=null}else if(e.event_type==="clock_out"&&start){total+=Math.max(0,Math.round((t-start)/60000));start=null;bs=null}}if(start)total+=Math.max(0,Math.round((new Date()-start)/60000));return Math.max(0,total)}
+function worked(events){
+  const days={};
+
+  const dayKey=d=>{
+    const parts=new Intl.DateTimeFormat("en-GB",{
+      timeZone:"Europe/London",
+      year:"numeric",
+      month:"2-digit",
+      day:"2-digit"
+    }).formatToParts(d);
+
+    const get=t=>parts.find(p=>p.type===t).value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  };
+
+  for(const e of events){
+    const t=new Date(e.event_time);
+    const key=dayKey(t);
+
+    if(!days[key]){
+      days[key]={total:0,start:null,breakStart:null,breakMinutes:0,worked:false};
+    }
+
+    const d=days[key];
+
+    if(e.event_type==="clock_in"){
+      d.start=t;
+      d.worked=true;
+    }else if(e.event_type==="break_start"&&d.start&&!d.breakStart){
+      d.breakStart=t;
+    }else if(e.event_type==="break_end"&&d.breakStart){
+      d.breakMinutes+=Math.max(0,Math.round((t-d.breakStart)/60000));
+      d.breakStart=null;
+    }else if(e.event_type==="clock_out"&&d.start){
+      d.total+=Math.max(0,Math.round((t-d.start)/60000));
+      d.start=null;
+      d.breakStart=null;
+    }
+  }
+
+  let total=0;
+
+  for(const d of Object.values(days)){
+    if(d.start){
+      d.total+=Math.max(0,Math.round((new Date()-d.start)/60000));
+    }
+
+    if(d.worked && d.total>=360){
+  d.total-=Math.max(30,d.breakMinutes);
+}else if(d.breakMinutes>0){
+  d.total-=d.breakMinutes;
+}
+
+    total+=Math.max(0,d.total);
+  }
+
+  return Math.max(0,total);
+}
 async function autoOut(){let d=new Date(),dow=d.getDay()||7,s=await q(`SELECT * FROM work_schedule WHERE day_of_week=$1`,[dow]);if(!s.rows.length||!s.rows[0].auto_finish_enabled||!s.rows[0].automatic_finish_time)return;let [h,m]=String(s.rows[0].automatic_finish_time).split(":").map(Number),cut=new Date(d);cut.setHours(h,m,0,0);if(d<cut)return;let a=await q(`SELECT e.id FROM employees e WHERE e.is_active=TRUE AND (SELECT event_type FROM clock_events c WHERE c.employee_id=e.id ORDER BY event_time DESC LIMIT 1) IN ('clock_in','break_end')`);for(const e of a.rows){let x=await q(`SELECT 1 FROM clock_events WHERE employee_id=$1 AND event_type='clock_out' AND event_time::date=CURRENT_DATE AND source='automatic' LIMIT 1`,[e.id]);if(!x.rows.length){await q(`INSERT INTO clock_events(employee_id,event_type,event_time,source,notes) VALUES($1,'clock_out',$2,'automatic','Automatic finish time')`,[e.id,cut]);await audit("system",null,"automatic_clock_out",{employeeId:e.id})}}}
 setInterval(()=>autoOut().catch(console.error),60000);
 app.get('/api/health',async(req,res)=>{await q('SELECT 1');res.json({ok:true})});
