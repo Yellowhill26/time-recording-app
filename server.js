@@ -36,8 +36,14 @@ let email=(process.env.ADMIN_EMAIL||"").trim().toLowerCase(),pass=process.env.AD
 async function emp(req){let t=req.get("x-device-token")||req.body?.deviceToken;if(!t)return null;let r=await q(`SELECT e.*,d.id device_id FROM employee_devices d JOIN employees e ON e.id=d.employee_id WHERE d.token_hash=$1 AND d.revoked_at IS NULL AND e.is_active=TRUE`,[sha(t)]);if(!r.rows.length)return null;await q(`UPDATE employee_devices SET last_seen_at=NOW() WHERE id=$1`,[r.rows[0].device_id]);return r.rows[0]}
 function manager(req,res,next){if(!req.session.managerId)return res.status(401).json({error:"Manager login required"});next()}
 async function state(id){let r=await q(`SELECT event_type FROM clock_events WHERE employee_id=$1 ORDER BY event_time DESC LIMIT 1`,[id]);if(!r.rows.length)return"off";return ["clock_in","break_end"].includes(r.rows[0].event_type)?"working":r.rows[0].event_type==="break_start"?"break":"off"}
-function worked(events){
+function worked(events,schedule=[]){
   const days={};
+  const hasSchedule=Array.isArray(schedule)&&schedule.length>0;
+
+  const scheduleByDay={};
+  for(const r of schedule){
+    scheduleByDay[Number(r.day_of_week)]=r;
+  }
 
   const dayKey=d=>{
     const parts=new Intl.DateTimeFormat("en-GB",{
@@ -51,12 +57,25 @@ function worked(events){
     return `${get("year")}-${get("month")}-${get("day")}`;
   };
 
+  const dayOfWeek=key=>{
+    const [year,month,day]=key.split("-").map(Number);
+    const dow=new Date(Date.UTC(year,month-1,day,12)).getUTCDay();
+    return dow===0?7:dow;
+  };
+
   for(const e of events){
     const t=new Date(e.event_time);
     const key=dayKey(t);
 
     if(!days[key]){
-      days[key]={total:0,start:null,breakStart:null,breakMinutes:0,worked:false};
+      days[key]={
+        total:0,
+        start:null,
+        breakStart:null,
+        breakMinutes:0,
+        worked:false,
+        dayOfWeek:dayOfWeek(key)
+      };
     }
 
     const d=days[key];
@@ -83,11 +102,19 @@ function worked(events){
       d.total+=Math.max(0,Math.round((new Date()-d.start)/60000));
     }
 
-    if(d.worked && d.total>=360){
-  d.total-=Math.max(30,d.breakMinutes);
-}else if(d.breakMinutes>0){
-  d.total-=d.breakMinutes;
-}
+    const rule=scheduleByDay[d.dayOfWeek];
+
+    const unpaidBreak=hasSchedule
+      ? (rule&&rule.is_working_day
+          ? Math.max(0,Number(rule.unpaid_break_minutes??30))
+          : 0)
+      : 30;
+
+    if(d.worked && d.total>=360 && unpaidBreak>0){
+      d.total-=Math.max(unpaidBreak,d.breakMinutes);
+    }else if(d.breakMinutes>0){
+      d.total-=d.breakMinutes;
+    }
 
     total+=Math.max(0,d.total);
   }
@@ -314,7 +341,8 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
 });
 app.post('/api/manager/employees/:id/pairing-code',manager,async(req,res)=>{let id=Number(req.params.id),c=code();await q(`UPDATE pairing_codes SET used_at=NOW() WHERE employee_id=$1 AND used_at IS NULL`,[id]);await q(`INSERT INTO pairing_codes(employee_id,code_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '30 minutes')`,[id,sha(c)]);res.json({code:c,expiresInMinutes:30})});
 app.post('/api/manager/employees/:id/unpair',manager,async(req,res)=>{await q(`UPDATE employee_devices SET revoked_at=NOW() WHERE employee_id=$1 AND revoked_at IS NULL`,[Number(req.params.id)]);res.json({ok:true})});
-app.get('/api/manager/dashboard',manager,async(req,res)=>{await autoOut();let es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),out=[],ws=weekStart();for(const e of es.rows){let st=await state(e.id),lv=await q(`SELECT 1 FROM leave_records WHERE employee_id=$1 AND leave_date=CURRENT_DATE LIMIT 1`,[e.id]),td=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]),wk=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,ws,addDays(ws,6)]);out.push({id:e.id,employeeNumber:e.employee_number,name:`${e.first_name} ${e.last_name}`.trim(),status:lv.rows.length?'annual leave':st,todayMinutes:worked(td.rows),weekMinutes:worked(wk.rows),weeklyTarget:e.weekly_minutes})}let p=await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id WHERE o.status='pending' ORDER BY o.submitted_at`);res.json({employees:out,pendingOvertime:p.rows})});
+app.get('/api/manager/dashboard',manager,async(req,res)=>{await autoOut();let es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),out=[],ws=weekStart(),schedule=(await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows;for(const e of es.rows){let st=await state(e.id),lv=await q(`SELECT 1 FROM leave_records WHERE employee_id=$1 AND leave_date=CURRENT_DATE LIMIT 1`,[e.id]),td=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]),wk=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,ws,addDays(ws,6)]);out.push({id:e.id,employeeNumber:e.employee_number,name:`${e.first_name} ${e.last_name}`.trim(),status:lv.rows.length?'annual leave':st,todayMinutes:worked(td.rows,schedule),
+weekMinutes:worked(wk.rows,schedule),weeklyTarget:e.weekly_minutes})}let p=await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id WHERE o.status='pending' ORDER BY o.submitted_at`);res.json({employees:out,pendingOvertime:p.rows})});
 app.get('/api/manager/schedule',manager,async(req,res)=>res.json((await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows));
 app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
   let b=req.body;
@@ -351,6 +379,7 @@ app.get('/api/manager/weekly-review',manager,async(req,res)=>{
 
   const es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`);
   const rows=[];
+  const schedule=(await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows;
 
   for(const e of es.rows){
     const ev=await q(`
@@ -401,7 +430,7 @@ app.get('/api/manager/weekly-review',manager,async(req,res)=>{
     rows.push({
       id:e.id,
       name:`${e.first_name} ${e.last_name}`.trim(),
-      regularMinutes:worked(ev.rows),
+      regularMinutes:worked(ev.rows,schedule),
       approvedOvertimeMinutes:a,
       pendingOvertimeMinutes:p,
       leaveMinutes:l,
