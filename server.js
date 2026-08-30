@@ -46,6 +46,29 @@ app.post('/api/employee/overtime',async(req,res)=>{let e=await emp(req);if(!e)re
 app.post('/api/manager/login',async(req,res)=>{let email=String(req.body.email||'').trim().toLowerCase(),r=await q(`SELECT * FROM manager_users WHERE email=$1 AND is_active=TRUE`,[email]);if(!r.rows.length||!(await bcrypt.compare(String(req.body.password||''),r.rows[0].password_hash)))return res.status(401).json({error:'Incorrect email or password'});req.session.managerId=r.rows[0].id;req.session.managerName=r.rows[0].name;res.json({ok:true,name:r.rows[0].name})});
 app.post('/api/manager/logout',(req,res)=>req.session.destroy(()=>res.json({ok:true})));app.get('/api/manager/session',(req,res)=>req.session.managerId?res.json({id:req.session.managerId,name:req.session.managerName}):res.status(401).json({error:'Not signed in'}));
 app.get('/api/manager/employees',manager,async(req,res)=>res.json((await q(`SELECT * FROM employees ORDER BY id`)).rows));
+app.get('/api/manager/time-corrections',manager,async(req,res)=>{
+  try{
+    const employeeId=Number(req.query.employeeId);
+    const date=String(req.query.date||'');
+
+    if(!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
+      return res.status(400).json({error:'Employee and date are required'});
+    }
+
+    const r=await q(`
+      SELECT id,event_type,event_time,source
+      FROM clock_events
+      WHERE employee_id=$1
+        AND (event_time AT TIME ZONE 'Europe/London')::date=$2::date
+      ORDER BY event_time
+    `,[employeeId,date]);
+
+    res.json(r.rows);
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not load clocking times'});
+  }
+});
 app.post('/api/manager/employees',manager,async(req,res)=>{
   try{
     const employeeNumber=String(req.body.employeeNumber||'').trim();
