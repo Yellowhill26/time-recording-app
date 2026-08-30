@@ -313,18 +313,20 @@ async function loadCorrections(){
   document.getElementById("correctionsContent").innerHTML=`
     <h3>Recorded times</h3>
     <table>
-      <tr>
-        <th>Event</th>
-        <th>Time</th>
-        <th>Source</th>
-      </tr>
-      ${events.map(e=>`
-        <tr>
-          <td>${labels[e.event_type]||e.event_type}</td>
-          <td>${new Date(e.event_time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
-          <td>${e.source||""}</td>
-        </tr>
-      `).join("")}
+     <tr>
+  <th>Event</th>
+  <th>Time</th>
+  <th>Source</th>
+  <th>Action</th>
+</tr>
+${events.map(e=>`
+  <tr>
+    <td>${labels[e.event_type]||e.event_type}</td>
+    <td>${new Date(e.event_time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
+    <td>${e.source||""}</td>
+    <td><button class="btn small secondary" onclick="editCorrection(${e.id},'${e.event_time}')">Edit</button></td>
+  </tr>
+`).join("")}
     </table>
   `;
 }catch(e){
@@ -333,3 +335,36 @@ async function loadCorrections(){
 }
   };
 }
+window.editCorrection=async(id,eventTime)=>{
+  const oldDate=new Date(eventTime);
+
+  const currentTime=oldDate.toLocaleTimeString("en-GB",{
+    hour:"2-digit",
+    minute:"2-digit"
+  });
+
+  const newTime=prompt("Enter the correct time (HH:MM)",currentTime);
+
+  if(!newTime)return;
+
+  if(!/^\d{2}:\d{2}$/.test(newTime)){
+    alert("Please enter the time as HH:MM, for example 08:00");
+    return;
+  }
+
+  const selectedDate=document.getElementById("correctionDate").value;
+  const localDateTime=new Date(`${selectedDate}T${newTime}`);
+
+  try{
+    await api(`/api/manager/time-corrections/${id}`,{
+      method:"PATCH",
+      body:JSON.stringify({
+        eventTime:localDateTime.toISOString()
+      })
+    });
+
+    document.getElementById("loadCorrectionsBtn").click();
+  }catch(e){
+    alert(e.message);
+  }
+};
