@@ -284,7 +284,7 @@ async function loadCorrections(){
   document.getElementById("correctionDate").value=
     new Date().toISOString().slice(0,10);
 
-  document.getElementById("loadCorrectionsBtn").onclick=()=>{
+  document.getElementById("loadCorrectionsBtn").onclick=async()=>{
     const employeeId=select.value;
     const date=document.getElementById("correctionDate").value;
 
@@ -294,7 +294,42 @@ async function loadCorrections(){
       return;
     }
 
+    try{
+  const events=await api(`/api/manager/time-corrections?employeeId=${employeeId}&date=${date}`);
+
+  const labels={
+    clock_in:"Clock in",
+    clock_out:"Clock out",
+    break_start:"Break start",
+    break_end:"Break end"
+  };
+
+  if(!events.length){
     document.getElementById("correctionsContent").innerHTML=
-      "<p>Ready to load clocking times.</p>";
+      '<p class="muted">No clocking times recorded for this employee on this date.</p>';
+    return;
+  }
+
+  document.getElementById("correctionsContent").innerHTML=`
+    <h3>Recorded times</h3>
+    <table>
+      <tr>
+        <th>Event</th>
+        <th>Time</th>
+        <th>Source</th>
+      </tr>
+      ${events.map(e=>`
+        <tr>
+          <td>${labels[e.event_type]||e.event_type}</td>
+          <td>${new Date(e.event_time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
+          <td>${e.source||""}</td>
+        </tr>
+      `).join("")}
+    </table>
+  `;
+}catch(e){
+  document.getElementById("correctionsContent").innerHTML=
+    `<div class="error">${esc(e.message)}</div>`;
+}
   };
 }
