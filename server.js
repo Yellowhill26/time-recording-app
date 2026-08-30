@@ -69,6 +69,53 @@ app.get('/api/manager/time-corrections',manager,async(req,res)=>{
     res.status(500).json({error:'Could not load clocking times'});
   }
 });
+app.patch('/api/manager/time-corrections/:id',manager,async(req,res)=>{
+  try{
+    const id=Number(req.params.id);
+    const eventTime=String(req.body.eventTime||'');
+
+    if(!id || !eventTime || isNaN(new Date(eventTime).getTime())){
+      return res.status(400).json({error:'A valid time is required'});
+    }
+
+    const old=await q(
+      `SELECT id,employee_id,event_type,event_time,source
+       FROM clock_events
+       WHERE id=$1`,
+      [id]
+    );
+
+    if(!old.rows.length){
+      return res.status(404).json({error:'Clocking record not found'});
+    }
+
+    const r=await q(
+      `UPDATE clock_events
+       SET event_time=$1,source='manager'
+       WHERE id=$2
+       RETURNING id,employee_id,event_type,event_time,source`,
+      [eventTime,id]
+    );
+
+    await audit(
+      'manager',
+      req.session.managerId,
+      'clock_event_corrected',
+      {
+        eventId:id,
+        employeeId:old.rows[0].employee_id,
+        eventType:old.rows[0].event_type,
+        previousTime:old.rows[0].event_time,
+        newTime:r.rows[0].event_time
+      }
+    );
+
+    res.json(r.rows[0]);
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not update clocking time'});
+  }
+});
 app.post('/api/manager/employees',manager,async(req,res)=>{
   try{
     const employeeNumber=String(req.body.employeeNumber||'').trim();
