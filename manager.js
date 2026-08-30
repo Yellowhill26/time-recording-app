@@ -87,10 +87,117 @@ window.saveDay=async day=>{await api(`/api/manager/schedule/${day}`,{method:"PUT
 async function loadOvertime(){const d=await api("/api/manager/overtime");$("overtime").innerHTML=`<div class="card"><h2>Overtime requests</h2><table><tr><th>Employee</th><th>Date/time</th><th>Duration</th><th>Reason</th><th>Status/action</th></tr>${d.map(o=>`<tr><td>${esc(o.first_name+" "+o.last_name)}</td><td>${String(o.work_date).slice(0,10)}<br>${String(o.start_time).slice(0,5)}–${String(o.finish_time).slice(0,5)}</td><td>${hrs(o.minutes)}</td><td>${esc(o.reason||"")}</td><td>${o.status==="pending"?`<button class="btn small success" onclick="reviewOt(${o.id},'approved')">Approve</button> <button class="btn small danger" onclick="reviewOt(${o.id},'rejected')">Reject</button>`:`<span class="pill">${o.status}</span>`}</td></tr>`).join("")}</table></div>`;}
 window.reviewOt=async(id,status)=>{await api(`/api/manager/overtime/${id}/review`,{method:"POST",body:JSON.stringify({status})});loadOvertime();};
 
-async function loadLeave(){const [emps,leave]=await Promise.all([api("/api/manager/employees"),api("/api/manager/leave")]);$("leave").innerHTML=`<div class="card"><h2>Add annual leave</h2><div class="grid two"><div><label>Employee</label><select id="leaveEmp">${emps.filter(e=>e.is_active).map(e=>`<option value="${e.id}">${esc(e.first_name+" "+e.last_name)}</option>`).join("")}</select></div><div><label>Date</label><input type="date" id="leaveDate"></div><div><label>Paid hours credit</label><input type="number" id="leaveHours" value="8" min="0" max="24" step=".25"></div><div><label>Note</label><input id="leaveNote"></div></div><div class="actions"><button class="btn" onclick="addLeave()">Mark as annual leave</button></div></div>
-<div class="card"><h2>Recent leave</h2><table><tr><th>Employee</th><th>Date</th><th>Credit</th><th></th></tr>${leave.map(l=>`<tr><td>${esc(l.first_name+" "+l.last_name)}</td><td>${String(l.leave_date).slice(0,10)}</td><td>${hrs(l.minutes_credit)}</td><td><button class="btn small danger" onclick="removeLeave(${l.id})">Remove</button></td></tr>`).join("")}</table></div>`;$("leaveDate").value=new Date().toISOString().slice(0,10);}
-window.addLeave=async()=>{await api("/api/manager/leave",{method:"POST",body:JSON.stringify({employeeId:$("leaveEmp").value,leaveDate:$("leaveDate").value,minutesCredit:Math.round(Number($("leaveHours").value)*60),notes:$("leaveNote").value})});loadLeave();};
-window.removeLeave=async id=>{if(confirm("Remove this annual leave entry?")){await api(`/api/manager/leave/${id}`,{method:"DELETE"});loadLeave();}};
+function leaveHoursForDate(dateString){
+  if(!dateString) return 0;
+  const d=new Date(dateString+"T12:00:00");
+  const day=d.getDay();
+
+  if(day>=1 && day<=4) return 8.5; // Monday-Thursday
+  if(day===5) return 6;            // Friday
+  return 0;                        // Saturday/Sunday
+}
+
+function updateLeaveHours(){
+  const date=$("leaveDate")?.value;
+  const hours=$("leaveHours");
+  if(hours) hours.value=leaveHoursForDate(date);
+}
+
+async function loadLeave(){
+  const [emps,leave]=await Promise.all([
+    api("/api/manager/employees"),
+    api("/api/manager/leave")
+  ]);
+
+  $("leave").innerHTML=`
+    <div class="card">
+      <h2>Add annual leave</h2>
+
+      <div class="grid two">
+        <div>
+          <label>Employee</label>
+          <select id="leaveEmp">
+            ${emps.filter(e=>e.is_active).map(e=>`
+              <option value="${e.id}">
+                ${esc(e.first_name+" "+e.last_name)}
+              </option>
+            `).join("")}
+          </select>
+        </div>
+
+        <div>
+          <label>Date</label>
+          <input type="date" id="leaveDate" onchange="updateLeaveHours()">
+        </div>
+
+        <div>
+          <label>Paid hours credit</label>
+          <input type="number" id="leaveHours" min="0" max="24" step="0.5">
+        </div>
+
+        <div>
+          <label>Note</label>
+          <input id="leaveNote">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="addLeave()">Mark as annual leave</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Recent leave</h2>
+
+      <table>
+        <tr>
+          <th>Employee</th>
+          <th>Date</th>
+          <th>Credit</th>
+          <th></th>
+        </tr>
+
+        ${leave.map(l=>`
+          <tr>
+            <td>${esc(l.first_name+" "+l.last_name)}</td>
+            <td>${String(l.leave_date).slice(0,10)}</td>
+            <td>${hrs(l.minutes_credit)}</td>
+            <td>
+              <button class="btn small danger" onclick="removeLeave(${l.id})">
+                Remove
+              </button>
+            </td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>`;
+
+  $("leaveDate").value=new Date().toISOString().slice(0,10);
+  updateLeaveHours();
+}
+
+window.updateLeaveHours=updateLeaveHours;
+
+window.addLeave=async()=>{
+  await api("/api/manager/leave",{
+    method:"POST",
+    body:JSON.stringify({
+      employeeId:$("leaveEmp").value,
+      leaveDate:$("leaveDate").value,
+      minutesCredit:Math.round(Number($("leaveHours").value)*60),
+      notes:$("leaveNote").value
+    })
+  });
+
+  loadLeave();
+};
+
+window.removeLeave=async id=>{
+  if(confirm("Remove this annual leave entry?")){
+    await api(`/api/manager/leave/${id}`,{method:"DELETE"});
+    loadLeave();
+  }
+};
 
 async function loadWeekly(){
   const d=await api("/api/manager/weekly-review");
