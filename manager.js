@@ -7,7 +7,7 @@ async function init(){try{await api("/api/manager/session");showApp();}catch{}}
 function showApp(){$("loginCard").style.display="none";$("managerApp").style.display="block";$("logout").style.display="inline-block";loadDashboard();}
 $("loginBtn").onclick=async()=>{try{await api("/api/manager/login",{method:"POST",body:JSON.stringify({email:$("email").value,password:$("password").value})});showApp();}catch(e){$("loginMsg").innerHTML=`<div class="message error">${esc(e.message)}</div>`;}};
 $("logout").onclick=async()=>{await api("/api/manager/logout",{method:"POST"});location.reload();};
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active");({dashboard:loadDashboard,employees:loadEmployees,schedule:loadSchedule,overtime:loadOvertime,leave:loadLeave,weekly:loadWeekly}[b.dataset.tab])();});
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active");({dashboard:loadDashboard,employees:loadEmployees,schedule:loadSchedule,overtime:loadOvertime,leave:loadLeave,corrections:loadCorrections,weekly:loadWeekly}[b.dataset.tab])();
 
 async function loadDashboard(){const d=await api("/api/manager/dashboard");const working=d.employees.filter(e=>e.status==="working").length;const leave=d.employees.filter(e=>e.status==="annual leave").length;
 $("dashboard").innerHTML=`<div class="grid three"><div class="card"><div class="muted">Working now</div><div class="kpi">${working}</div></div><div class="card"><div class="muted">Annual leave today</div><div class="kpi">${leave}</div></div><div class="card"><div class="muted">Overtime awaiting approval</div><div class="kpi">${d.pendingOvertime.length}</div></div></div>
@@ -238,3 +238,13 @@ async function loadWeekly(){
     </div>`;
 }
 init();
+async function loadCorrections(){
+  const panel=document.getElementById("corrections");
+  panel.innerHTML=`
+    <div class="card">
+      <h2>Time corrections</h2>
+      <p class="muted">Use this section to add or correct missed clock-ins, clock-outs and break times.</p>
+      <div id="correctionsContent">Loading...</div>
+    </div>
+  `;
+}
