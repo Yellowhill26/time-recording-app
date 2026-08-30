@@ -210,6 +210,51 @@ app.post('/api/manager/time-corrections',manager,async(req,res)=>{
     res.status(500).json({error:'Could not add clocking time'});
   }
 });
+app.delete('/api/manager/time-corrections/:id',manager,async(req,res)=>{
+  try{
+    const id=Number(req.params.id);
+
+    if(!id){
+      return res.status(400).json({error:'A valid clocking record is required'});
+    }
+
+    const old=await q(
+      `SELECT id,employee_id,event_type,event_time,source
+       FROM clock_events
+       WHERE id=$1`,
+      [id]
+    );
+
+    if(!old.rows.length){
+      return res.status(404).json({error:'Clocking record not found'});
+    }
+
+    await q(
+      `DELETE FROM clock_events
+       WHERE id=$1`,
+      [id]
+    );
+
+    await audit(
+      'manager',
+      req.session.managerId,
+      'clock_event_deleted',
+      {
+        eventId:id,
+        employeeId:old.rows[0].employee_id,
+        eventType:old.rows[0].event_type,
+        eventTime:old.rows[0].event_time,
+        source:old.rows[0].source
+      }
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not delete clocking time'});
+  }
+});
+
 app.post('/api/manager/employees',manager,async(req,res)=>{
   try{
     const employeeNumber=String(req.body.employeeNumber||'').trim();
