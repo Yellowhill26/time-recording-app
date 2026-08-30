@@ -81,8 +81,55 @@ window.setEmployeeActive=async(id,isActive)=>{
 window.pair=async(id,name)=>{const d=await api(`/api/manager/employees/${id}/pairing-code`,{method:"POST"});alert(`Pairing code for ${name}: ${d.code}\n\nValid for ${d.expiresInMinutes} minutes.`);};
 window.unpair=async id=>{if(confirm("Unpair all phones for this employee?")){await api(`/api/manager/employees/${id}/unpair`,{method:"POST"});alert("Phone(s) unpaired.");}};
 
-async function loadSchedule(){const d=await api("/api/manager/schedule");$("schedule").innerHTML=`<div class="card"><h2>Automatic finish times</h2><p class="muted">Each day has its own setting. Friday can therefore finish earlier than Monday–Thursday.</p><table><tr><th>Day</th><th>Working day</th><th>Start</th><th>Automatic finish</th><th>Auto finish</th><th></th></tr>${d.map(r=>`<tr><td>${days[r.day_of_week-1]}</td><td><input type="checkbox" id="work${r.day_of_week}" ${r.is_working_day?"checked":""}></td><td><input type="time" id="start${r.day_of_week}" value="${(r.normal_start_time||"").slice(0,5)}"></td><td><input type="time" id="finish${r.day_of_week}" value="${(r.automatic_finish_time||"").slice(0,5)}"></td><td><input type="checkbox" id="auto${r.day_of_week}" ${r.auto_finish_enabled?"checked":""}></td><td><button class="btn small" onclick="saveDay(${r.day_of_week})">Save</button></td></tr>`).join("")}</table></div>`;}
-window.saveDay=async day=>{await api(`/api/manager/schedule/${day}`,{method:"PUT",body:JSON.stringify({isWorkingDay:$(`work${day}`).checked,normalStartTime:$(`start${day}`).value||null,automaticFinishTime:$(`finish${day}`).value||null,autoFinishEnabled:$(`auto${day}`).checked})});alert(`${days[day-1]} saved.`);};
+async function loadSchedule(){
+  const d=await api("/api/manager/schedule");
+
+  $("schedule").innerHTML=`
+    <div class="card">
+      <h2>Automatic finish times</h2>
+      <p class="muted">Each day has its own setting. Unpaid break minutes are deducted automatically from normal working days.</p>
+
+      <table>
+        <tr>
+          <th>Day</th>
+          <th>Working day</th>
+          <th>Start</th>
+          <th>Automatic finish</th>
+          <th>Unpaid break (minutes)</th>
+          <th>Auto finish</th>
+          <th></th>
+        </tr>
+
+        ${d.map(r=>`
+          <tr>
+            <td>${days[r.day_of_week]}</td>
+            <td><input type="checkbox" id="work${r.day_of_week}" ${r.is_working_day?"checked":""}></td>
+            <td><input type="time" id="start${r.day_of_week}" value="${r.normal_start_time||""}"></td>
+            <td><input type="time" id="finish${r.day_of_week}" value="${r.automatic_finish_time||""}"></td>
+            <td><input type="number" id="break${r.day_of_week}" min="0" step="5" value="${r.unpaid_break_minutes??30}"></td>
+            <td><input type="checkbox" id="auto${r.day_of_week}" ${r.auto_finish_enabled?"checked":""}></td>
+            <td><button class="btn small" onclick="saveDay(${r.day_of_week})">Save</button></td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>
+  `;
+}
+
+window.saveDay=async day=>{
+  await api(`/api/manager/schedule/${day}`,{
+    method:"PUT",
+    body:JSON.stringify({
+      isWorkingDay:$(`work${day}`).checked,
+      normalStartTime:$(`start${day}`).value||null,
+      automaticFinishTime:$(`finish${day}`).value||null,
+      unpaidBreakMinutes:Number($(`break${day}`).value||0),
+      autoFinishEnabled:$(`auto${day}`).checked
+    })
+  });
+
+  await loadSchedule();
+};
 
 async function loadOvertime(){const d=await api("/api/manager/overtime");$("overtime").innerHTML=`<div class="card"><h2>Overtime requests</h2><table><tr><th>Employee</th><th>Date/time</th><th>Duration</th><th>Reason</th><th>Status/action</th></tr>${d.map(o=>`<tr><td>${esc(o.first_name+" "+o.last_name)}</td><td>${String(o.work_date).slice(0,10)}<br>${String(o.start_time).slice(0,5)}–${String(o.finish_time).slice(0,5)}</td><td>${hrs(o.minutes)}</td><td>${esc(o.reason||"")}</td><td>${o.status==="pending"?`<button class="btn small success" onclick="reviewOt(${o.id},'approved')">Approve</button> <button class="btn small danger" onclick="reviewOt(${o.id},'rejected')">Reject</button>`:`<span class="pill">${o.status}</span>`}</td></tr>`).join("")}</table></div>`;}
 window.reviewOt=async(id,status)=>{await api(`/api/manager/overtime/${id}/review`,{method:"POST",body:JSON.stringify({status})});loadOvertime();};
