@@ -223,17 +223,38 @@ async function loadWeekly(){
           <th>Target</th>
         </tr>
 
-        ${d.rows.map(r=>`
-          <tr>
-            <td>${esc(r.name)}</td>
-            <td>${hrs(r.regularMinutes)}</td>
-            <td>${hrs(r.approvedOvertimeMinutes)}</td>
-            <td>${hrs(r.pendingOvertimeMinutes)}</td>
-            <td>${hrs(r.leaveMinutes)}</td>
-            <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes)}</strong></td>
-            <td>${hrs(r.weeklyTarget)}</td>
-          </tr>
-        `).join("")}
+       ${d.rows.map(r=>`
+  <tr>
+    <td>${esc(r.name)}</td>
+    <td>${hrs(r.regularMinutes)}</td>
+    <td>${hrs(r.approvedOvertimeMinutes)}</td>
+    <td>${hrs(r.pendingOvertimeMinutes)}</td>
+    <td>${hrs(r.leaveMinutes)}</td>
+    <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes)}</strong></td>
+    <td>${hrs(r.weeklyTarget)}</td>
+  </tr>
+  <tr>
+    <td colspan="7">
+      <div class="muted" style="padding:8px 0">
+        ${
+          (r.dailyTimes||[]).length
+          ? r.dailyTimes.map(d=>{
+              const day=new Date(d.date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"long"});
+              const clockIn=d.clockIn
+                ? new Date(d.clockIn).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})
+                : "—";
+              const clockOut=d.clockOut
+                ? new Date(d.clockOut).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})
+                : "—";
+
+              return `<strong>${day}</strong>: Clock in ${clockIn} | Clock out ${clockOut}`;
+            }).join("<br>")
+          : "No clocking times recorded this week."
+        }
+      </div>
+    </td>
+  </tr>
+`).join("")}
       </table>
     </div>`;
 }
