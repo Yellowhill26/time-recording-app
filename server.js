@@ -321,6 +321,80 @@ app.post('/api/manager/overtime/:id/review',manager,async(req,res)=>{if(!['appro
 app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id WHERE l.leave_date>=CURRENT_DATE-INTERVAL '60 days' ORDER BY l.leave_date DESC`)).rows));
 app.post('/api/manager/leave',manager,async(req,res)=>{let b=req.body;await q(`INSERT INTO leave_records(employee_id,leave_date,minutes_credit,notes,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(employee_id,leave_date,leave_type) DO UPDATE SET minutes_credit=EXCLUDED.minutes_credit,notes=EXCLUDED.notes`,[Number(b.employeeId),b.leaveDate,Number(b.minutesCredit||480),String(b.notes||'').slice(0,500),req.session.managerId]);res.json({ok:true})});
 app.delete('/api/manager/leave/:id',manager,async(req,res)=>{await q(`DELETE FROM leave_records WHERE id=$1`,[Number(req.params.id)]);res.json({ok:true})});
-app.get('/api/manager/weekly-review',manager,async(req,res)=>{let start=req.query.weekStart||weekStart(),end=addDays(start,6),es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),rows=[];for(const e of es.rows){let ev=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,start,end]),a=(await q(`SELECT COALESCE(SUM(minutes),0)::int n FROM overtime_requests WHERE employee_id=$1 AND status='approved' AND work_date BETWEEN $2 AND $3`,[e.id,start,end])).rows[0].n,p=(await q(`SELECT COALESCE(SUM(minutes),0)::int n FROM overtime_requests WHERE employee_id=$1 AND status='pending' AND work_date BETWEEN $2 AND $3`,[e.id,start,end])).rows[0].n,l=(await q(`SELECT COALESCE(SUM(minutes_credit),0)::int n FROM leave_records WHERE employee_id=$1 AND leave_date BETWEEN $2 AND $3`,[e.id,start,end])).rows[0].n;rows.push({id:e.id,name:`${e.first_name} ${e.last_name}`.trim(),regularMinutes:worked(ev.rows),approvedOvertimeMinutes:a,pendingOvertimeMinutes:p,leaveMinutes:l,weeklyTarget:e.weekly_minutes})}res.json({weekStart:start,weekEnd:end,rows})});
+app.get('/api/manager/weekly-review',manager,async(req,res)=>{
+  const start=req.query.weekStart||weekStart();
+  const end=addDays(start,6);
+
+  const es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`);
+  const rows=[];
+
+  for(const e of es.rows){
+    const ev=await q(`
+      SELECT event_type,event_time
+      FROM clock_events
+      WHERE employee_id=$1
+        AND (event_time AT TIME ZONE 'Europe/London')::date
+            BETWEEN $2::date AND $3::date
+      ORDER BY event_time
+    `,[e.id,start,end]);
+
+    const daily=await q(`
+      SELECT
+        (event_time AT TIME ZONE 'Europe/London')::date::text AS work_date,
+        MIN(event_time) FILTER (WHERE event_type='clock_in') AS clock_in,
+        MAX(event_time) FILTER (WHERE event_type='clock_out') AS clock_out
+      FROM clock_events
+      WHERE employee_id=$1
+        AND (event_time AT TIME ZONE 'Europe/London')::date
+            BETWEEN $2::date AND $3::date
+      GROUP BY (event_time AT TIME ZONE 'Europe/London')::date
+      ORDER BY (event_time AT TIME ZONE 'Europe/London')::date
+    `,[e.id,start,end]);
+
+    const a=(await q(`
+      SELECT COALESCE(SUM(minutes),0)::int n
+      FROM overtime_requests
+      WHERE employee_id=$1
+        AND status='approved'
+        AND work_date BETWEEN $2 AND $3
+    `,[e.id,start,end])).rows[0].n;
+
+    const p=(await q(`
+      SELECT COALESCE(SUM(minutes),0)::int n
+      FROM overtime_requests
+      WHERE employee_id=$1
+        AND status='pending'
+        AND work_date BETWEEN $2 AND $3
+    `,[e.id,start,end])).rows[0].n;
+
+    const l=(await q(`
+      SELECT COALESCE(SUM(minutes_credit),0)::int n
+      FROM leave_records
+      WHERE employee_id=$1
+        AND leave_date BETWEEN $2 AND $3
+    `,[e.id,start,end])).rows[0].n;
+
+    rows.push({
+      id:e.id,
+      name:`${e.first_name} ${e.last_name}`.trim(),
+      regularMinutes:worked(ev.rows),
+      approvedOvertimeMinutes:a,
+      pendingOvertimeMinutes:p,
+      leaveMinutes:l,
+      weeklyTarget:e.weekly_minutes,
+      dailyTimes:daily.rows.map(d=>({
+        date:d.work_date,
+        clockIn:d.clock_in,
+        clockOut:d.clock_out
+      }))
+    });
+  }
+
+  res.json({
+    weekStart:start,
+    weekEnd:end,
+    rows
+  });
+});
 app.get("/employee", (req,res)=>res.sendFile(path.join(__dirname,"employee.html")));app.get("/manager", (req,res)=>res.sendFile(path.join(__dirname,"manager.html")));app.get("*", (req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 init().then(()=>app.listen(PORT,()=>console.log(`running ${PORT}`))).catch(e=>{console.error(e);process.exit(1)});
