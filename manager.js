@@ -92,5 +92,42 @@ async function loadLeave(){const [emps,leave]=await Promise.all([api("/api/manag
 window.addLeave=async()=>{await api("/api/manager/leave",{method:"POST",body:JSON.stringify({employeeId:$("leaveEmp").value,leaveDate:$("leaveDate").value,minutesCredit:Math.round(Number($("leaveHours").value)*60),notes:$("leaveNote").value})});loadLeave();};
 window.removeLeave=async id=>{if(confirm("Remove this annual leave entry?")){await api(`/api/manager/leave/${id}`,{method:"DELETE"});loadLeave();}};
 
-async function loadWeekly(){const d=await api("/api/manager/weekly-review");$("weekly").innerHTML=`<div class="card"><div class="actions" style="justify-content:space-between"><div><h2 style="margin:0">Weekly review</h2><div class="muted">${d.weekStart} to ${d.weekEnd}</div></div><a class="btn secondary" href="/api/manager/weekly-review.csv?weekStart=${d.weekStart}">Download CSV</a></div><table><tr><th>Employee</th><th>Regular</th><th>Approved OT</th><th>Pending OT</th><th>Annual leave</th><th>Target</th></tr>${d.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${hrs(r.regularMinutes)}</td><td>${hrs(r.approvedOvertimeMinutes)}</td><td>${hrs(r.pendingOvertimeMinutes)}</td><td>${hrs(r.leaveMinutes)}</td><td>${hrs(r.weeklyTarget)}</td></tr>`).join("")}</table></div>`;}
+async function loadWeekly(){
+  const d=await api("/api/manager/weekly-review");
+
+  $("weekly").innerHTML=`
+    <div class="card">
+      <div class="actions" style="justify-content:space-between">
+        <div>
+          <h2 style="margin:0">Weekly review</h2>
+          <div class="muted">${d.weekStart} to ${d.weekEnd}</div>
+        </div>
+        <a class="btn secondary" href="/api/manager/weekly-review.csv?weekStart=${d.weekStart}">Download CSV</a>
+      </div>
+
+      <table>
+        <tr>
+          <th>Employee</th>
+          <th>Regular</th>
+          <th>Approved OT</th>
+          <th>Pending OT</th>
+          <th>Annual leave</th>
+          <th>Total hours</th>
+          <th>Target</th>
+        </tr>
+
+        ${d.rows.map(r=>`
+          <tr>
+            <td>${esc(r.name)}</td>
+            <td>${hrs(r.regularMinutes)}</td>
+            <td>${hrs(r.approvedOvertimeMinutes)}</td>
+            <td>${hrs(r.pendingOvertimeMinutes)}</td>
+            <td>${hrs(r.leaveMinutes)}</td>
+            <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes)}</strong></td>
+            <td>${hrs(r.weeklyTarget)}</td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>`;
+}
 init();
