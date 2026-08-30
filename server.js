@@ -63,7 +63,7 @@ app.post('/api/manager/employees',manager,async(req,res)=>{
       [employeeNumber,firstName,lastName]
     );
 
-    await audit(req.session.managerId,'employee_created',{employeeId:r.rows[0].id});
+    await audit('manager',req.session.managerId,'employee_created',{employeeId:r.rows[0].id});
     res.json(r.rows[0]);
   }catch(e){
     if(e.code==='23505') return res.status(400).json({error:'That employee number already exists'});
@@ -95,7 +95,7 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
       [firstName,lastName,Math.round(weeklyMinutes),isActive,id]
     );
 
-    await audit(req.session.managerId,'employee_updated',{employeeId:id});
+    await audit('manager',req.session.managerId,'employee_updated',{employeeId:id});
     res.json(r.rows[0]);
   }catch(e){
     console.error(e);
