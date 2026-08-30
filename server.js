@@ -46,6 +46,62 @@ app.post('/api/employee/overtime',async(req,res)=>{let e=await emp(req);if(!e)re
 app.post('/api/manager/login',async(req,res)=>{let email=String(req.body.email||'').trim().toLowerCase(),r=await q(`SELECT * FROM manager_users WHERE email=$1 AND is_active=TRUE`,[email]);if(!r.rows.length||!(await bcrypt.compare(String(req.body.password||''),r.rows[0].password_hash)))return res.status(401).json({error:'Incorrect email or password'});req.session.managerId=r.rows[0].id;req.session.managerName=r.rows[0].name;res.json({ok:true,name:r.rows[0].name})});
 app.post('/api/manager/logout',(req,res)=>req.session.destroy(()=>res.json({ok:true})));app.get('/api/manager/session',(req,res)=>req.session.managerId?res.json({id:req.session.managerId,name:req.session.managerName}):res.status(401).json({error:'Not signed in'}));
 app.get('/api/manager/employees',manager,async(req,res)=>res.json((await q(`SELECT * FROM employees ORDER BY id`)).rows));
+app.post('/api/manager/employees',manager,async(req,res)=>{
+  try{
+    const employeeNumber=String(req.body.employeeNumber||'').trim();
+    const firstName=String(req.body.firstName||'').trim();
+    const lastName=String(req.body.lastName||'').trim();
+
+    if(!employeeNumber||!firstName){
+      return res.status(400).json({error:'Employee number and first name are required'});
+    }
+
+    const r=await q(
+      `INSERT INTO employees(employee_number,first_name,last_name,weekly_minutes,is_active)
+       VALUES($1,$2,$3,2400,TRUE)
+       RETURNING *`,
+      [employeeNumber,firstName,lastName]
+    );
+
+    await audit(req.session.managerId,'employee_created',{employeeId:r.rows[0].id});
+    res.json(r.rows[0]);
+  }catch(e){
+    if(e.code==='23505') return res.status(400).json({error:'That employee number already exists'});
+    console.error(e);
+    res.status(500).json({error:'Could not add employee'});
+  }
+});
+
+app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
+  try{
+    const id=Number(req.params.id);
+    const current=(await q('SELECT * FROM employees WHERE id=$1',[id])).rows[0];
+
+    if(!current) return res.status(404).json({error:'Employee not found'});
+
+    const firstName=req.body.firstName!==undefined ? String(req.body.firstName).trim() : current.first_name;
+    const lastName=req.body.lastName!==undefined ? String(req.body.lastName).trim() : current.last_name;
+    const weeklyMinutes=req.body.weeklyMinutes!==undefined ? Number(req.body.weeklyMinutes) : current.weekly_minutes;
+    const isActive=req.body.isActive!==undefined ? Boolean(req.body.isActive) : current.is_active;
+
+    if(!firstName) return res.status(400).json({error:'First name is required'});
+    if(!Number.isFinite(weeklyMinutes)||weeklyMinutes<=0) return res.status(400).json({error:'Weekly target is invalid'});
+
+    const r=await q(
+      `UPDATE employees
+       SET first_name=$1,last_name=$2,weekly_minutes=$3,is_active=$4
+       WHERE id=$5
+       RETURNING *`,
+      [firstName,lastName,Math.round(weeklyMinutes),isActive,id]
+    );
+
+    await audit(req.session.managerId,'employee_updated',{employeeId:id});
+    res.json(r.rows[0]);
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not update employee'});
+  }
+});
 app.post('/api/manager/employees/:id/pairing-code',manager,async(req,res)=>{let id=Number(req.params.id),c=code();await q(`UPDATE pairing_codes SET used_at=NOW() WHERE employee_id=$1 AND used_at IS NULL`,[id]);await q(`INSERT INTO pairing_codes(employee_id,code_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '30 minutes')`,[id,sha(c)]);res.json({code:c,expiresInMinutes:30})});
 app.post('/api/manager/employees/:id/unpair',manager,async(req,res)=>{await q(`UPDATE employee_devices SET revoked_at=NOW() WHERE employee_id=$1 AND revoked_at IS NULL`,[Number(req.params.id)]);res.json({ok:true})});
 app.get('/api/manager/dashboard',manager,async(req,res)=>{await autoOut();let es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),out=[],ws=weekStart();for(const e of es.rows){let st=await state(e.id),lv=await q(`SELECT 1 FROM leave_records WHERE employee_id=$1 AND leave_date=CURRENT_DATE LIMIT 1`,[e.id]),td=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]),wk=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,ws,addDays(ws,6)]);out.push({id:e.id,employeeNumber:e.employee_number,name:`${e.first_name} ${e.last_name}`.trim(),status:lv.rows.length?'annual leave':st,todayMinutes:worked(td.rows),weekMinutes:worked(wk.rows),weeklyTarget:e.weekly_minutes})}let p=await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id WHERE o.status='pending' ORDER BY o.submitted_at`);res.json({employees:out,pendingOvertime:p.rows})});
