@@ -116,6 +116,43 @@ app.patch('/api/manager/time-corrections/:id',manager,async(req,res)=>{
     res.status(500).json({error:'Could not update clocking time'});
   }
 });
+app.post('/api/manager/time-corrections',manager,async(req,res)=>{
+  try{
+    const employeeId=Number(req.body.employeeId);
+    const eventType=String(req.body.eventType||'');
+    const eventTime=String(req.body.eventTime||'');
+
+    const allowed=['clock_in','clock_out','break_start','break_end'];
+
+    if(!employeeId || !allowed.includes(eventType) || !eventTime || isNaN(new Date(eventTime).getTime())){
+      return res.status(400).json({error:'Employee, event type and valid time are required'});
+    }
+
+    const r=await q(
+      `INSERT INTO clock_events(employee_id,event_type,event_time,source)
+       VALUES($1,$2,$3,'manager')
+       RETURNING id,employee_id,event_type,event_time,source`,
+      [employeeId,eventType,eventTime]
+    );
+
+    await audit(
+      'manager',
+      req.session.managerId,
+      'clock_event_added',
+      {
+        eventId:r.rows[0].id,
+        employeeId,
+        eventType,
+        eventTime:r.rows[0].event_time
+      }
+    );
+
+    res.json(r.rows[0]);
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not add clocking time'});
+  }
+});
 app.post('/api/manager/employees',manager,async(req,res)=>{
   try{
     const employeeNumber=String(req.body.employeeNumber||'').trim();
