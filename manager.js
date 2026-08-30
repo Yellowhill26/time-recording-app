@@ -266,7 +266,24 @@ async function loadCorrections(){
 
       <button class="btn" id="loadCorrectionsBtn">Load times</button>
 
-      <div id="correctionsContent" style="margin-top:20px"></div>
+<hr style="margin:20px 0">
+
+<h3>Add missing time</h3>
+
+<label>Event</label>
+<select id="newCorrectionType">
+  <option value="clock_in">Clock in</option>
+  <option value="clock_out">Clock out</option>
+  <option value="break_start">Break start</option>
+  <option value="break_end">Break end</option>
+</select>
+
+<label>Time</label>
+<input id="newCorrectionTime" type="time">
+
+<button class="btn" id="addCorrectionBtn" onclick="addMissingCorrection()">Add missing time</button>
+
+<div id="correctionsContent" style="margin-top:20px"></div>
     </div>
   `;
 
@@ -368,3 +385,33 @@ window.editCorrection=async(id,eventTime)=>{
     alert(e.message);
   }
 };
+window.addMissingCorrection=async()=>{
+  const employeeId=document.getElementById("correctionEmployee").value;
+  const date=document.getElementById("correctionDate").value;
+  const eventType=document.getElementById("newCorrectionType").value;
+  const time=document.getElementById("newCorrectionTime").value;
+
+  if(!employeeId || !date || !eventType || !time){
+    alert("Please select an employee, date, event and time.");
+    return;
+  }
+
+  const localDateTime=new Date(`${date}T${time}`);
+
+  try{
+    await api("/api/manager/time-corrections",{
+      method:"POST",
+      body:JSON.stringify({
+        employeeId:Number(employeeId),
+        eventType,
+        eventTime:localDateTime.toISOString()
+      })
+    });
+
+    document.getElementById("newCorrectionTime").value="";
+    document.getElementById("loadCorrectionsBtn").click();
+  }catch(e){
+    alert(e.message);
+  }
+};
+
