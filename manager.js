@@ -288,10 +288,10 @@ async function loadCorrections(){
   `;
 
   const employees=await api("/api/manager/employees");
-
+const activeEmployees=employees.filter(e=>e.is_active);
   const select=document.getElementById("correctionEmployee");
 
-  employees.forEach(e=>{
+  activeEmployees.forEach(e=>{
     const option=document.createElement("option");
     option.value=e.id;
     option.textContent=(e.first_name+" "+(e.last_name||"")).trim();
@@ -341,7 +341,7 @@ ${events.map(e=>`
     <td>${labels[e.event_type]||e.event_type}</td>
     <td>${new Date(e.event_time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
     <td>${e.source||""}</td>
-    <td><button class="btn small secondary" onclick="editCorrection(${e.id},'${e.event_time}')">Edit</button></td>
+    <td><button class="btn small secondary" onclick="editCorrection(${e.id},'${e.event_time}')">Edit</button> <button class="btn small danger" onclick="deleteCorrection(${e.id})">Delete</button></td>
   </tr>
 `).join("")}
     </table>
@@ -414,4 +414,16 @@ window.addMissingCorrection=async()=>{
     alert(e.message);
   }
 };
+window.deleteCorrection=async(id)=>{
+  if(!confirm("Delete this clocking time?"))return;
 
+  try{
+    await api(`/api/manager/time-corrections/${id}`,{
+      method:"DELETE"
+    });
+
+    document.getElementById("loadCorrectionsBtn").click();
+  }catch(e){
+    alert(e.message);
+  }
+};
