@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS clock_events(id SERIAL PRIMARY KEY,employee_id INTEGE
 CREATE TABLE IF NOT EXISTS overtime_requests(id SERIAL PRIMARY KEY,employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,work_date DATE NOT NULL,start_time TIME NOT NULL,finish_time TIME NOT NULL,minutes INTEGER NOT NULL,reason TEXT,status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),reviewed_at TIMESTAMPTZ,reviewed_by INTEGER REFERENCES manager_users(id),manager_note TEXT);
 CREATE TABLE IF NOT EXISTS leave_records(id SERIAL PRIMARY KEY,employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,leave_date DATE NOT NULL,leave_type VARCHAR(30) NOT NULL DEFAULT 'annual_leave',minutes_credit INTEGER NOT NULL DEFAULT 480,notes TEXT,created_by INTEGER REFERENCES manager_users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(employee_id,leave_date,leave_type));
 CREATE TABLE IF NOT EXISTS audit_log(id BIGSERIAL PRIMARY KEY,actor_type VARCHAR(30) NOT NULL,actor_id INTEGER,action VARCHAR(100) NOT NULL,details JSONB NOT NULL DEFAULT '{}'::jsonb,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+await q(`ALTER TABLE work_schedule ADD COLUMN IF NOT EXISTS unpaid_break_minutes INTEGER NOT NULL DEFAULT 30`);
 for(const r of [[1,true,"08:00","17:00",true],[2,true,"08:00","17:00",true],[3,true,"08:00","17:00",true],[4,true,"08:00","17:00",true],[5,true,"08:00","14:00",true],[6,false,null,null,false],[7,false,null,null,false]])await q(`INSERT INTO work_schedule(day_of_week,is_working_day,normal_start_time,automatic_finish_time,auto_finish_enabled) VALUES($1,$2,$3,$4,$5) ON CONFLICT(day_of_week) DO NOTHING`,r);
 let c=await q(`SELECT COUNT(*)::int n FROM employees`);if(c.rows[0].n===0)for(let i=1;i<=6;i++)await q(`INSERT INTO employees(employee_number,first_name) VALUES($1,$2)`,[`EMP${String(i).padStart(2,"0")}`,`Employee ${i}`]);
 let email=(process.env.ADMIN_EMAIL||"").trim().toLowerCase(),pass=process.env.ADMIN_PASSWORD||"";if(email&&pass){let e=await q(`SELECT id FROM manager_users WHERE email=$1`,[email]);if(!e.rows.length)await q(`INSERT INTO manager_users(name,email,password_hash) VALUES($1,$2,$3)`,[process.env.ADMIN_NAME||"Manager",email,await bcrypt.hash(pass,12)])}}
@@ -315,7 +316,30 @@ app.post('/api/manager/employees/:id/pairing-code',manager,async(req,res)=>{let 
 app.post('/api/manager/employees/:id/unpair',manager,async(req,res)=>{await q(`UPDATE employee_devices SET revoked_at=NOW() WHERE employee_id=$1 AND revoked_at IS NULL`,[Number(req.params.id)]);res.json({ok:true})});
 app.get('/api/manager/dashboard',manager,async(req,res)=>{await autoOut();let es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),out=[],ws=weekStart();for(const e of es.rows){let st=await state(e.id),lv=await q(`SELECT 1 FROM leave_records WHERE employee_id=$1 AND leave_date=CURRENT_DATE LIMIT 1`,[e.id]),td=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]),wk=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,ws,addDays(ws,6)]);out.push({id:e.id,employeeNumber:e.employee_number,name:`${e.first_name} ${e.last_name}`.trim(),status:lv.rows.length?'annual leave':st,todayMinutes:worked(td.rows),weekMinutes:worked(wk.rows),weeklyTarget:e.weekly_minutes})}let p=await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id WHERE o.status='pending' ORDER BY o.submitted_at`);res.json({employees:out,pendingOvertime:p.rows})});
 app.get('/api/manager/schedule',manager,async(req,res)=>res.json((await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows));
-app.put('/api/manager/schedule/:day',manager,async(req,res)=>{let b=req.body;await q(`UPDATE work_schedule SET is_working_day=$2,normal_start_time=$3,automatic_finish_time=$4,auto_finish_enabled=$5,updated_at=NOW() WHERE day_of_week=$1`,[Number(req.params.day),!!b.isWorkingDay,b.normalStartTime||null,b.automaticFinishTime||null,!!b.autoFinishEnabled]);res.json({ok:true})});
+app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
+  let b=req.body;
+
+  await q(
+    `UPDATE work_schedule
+     SET is_working_day=$2,
+         normal_start_time=$3,
+         automatic_finish_time=$4,
+         auto_finish_enabled=$5,
+         unpaid_break_minutes=$6,
+         updated_at=NOW()
+     WHERE day_of_week=$1`,
+    [
+      Number(req.params.day),
+      !!b.isWorkingDay,
+      b.normalStartTime||null,
+      b.automaticFinishTime||null,
+      !!b.autoFinishEnabled,
+      Math.max(0,Number(b.unpaidBreakMinutes??30))
+    ]
+  );
+
+  res.json({ok:true});
+});
 app.get('/api/manager/overtime',manager,async(req,res)=>res.json((await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END,o.submitted_at DESC`)).rows));
 app.post('/api/manager/overtime/:id/review',manager,async(req,res)=>{if(!['approved','rejected'].includes(req.body.status))return res.status(400).json({error:'Invalid status'});await q(`UPDATE overtime_requests SET status=$2,reviewed_at=NOW(),reviewed_by=$3,manager_note=$4 WHERE id=$1`,[Number(req.params.id),req.body.status,req.session.managerId,String(req.body.note||'').slice(0,500)]);res.json({ok:true})});
 app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id WHERE l.leave_date>=CURRENT_DATE-INTERVAL '60 days' ORDER BY l.leave_date DESC`)).rows));
