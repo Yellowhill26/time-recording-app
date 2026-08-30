@@ -277,7 +277,7 @@ async function loadCorrections(){
   employees.forEach(e=>{
     const option=document.createElement("option");
     option.value=e.id;
-    option.textContent=e.name;
+    option.textContent=(e.first_name+" "+(e.last_name||"")).trim();
     select.appendChild(option);
   });
 
