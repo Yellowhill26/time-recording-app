@@ -117,18 +117,40 @@ async function loadSchedule(){
 }
 
 window.saveDay=async day=>{
-  await api(`/api/manager/schedule/${day}`,{
-    method:"PUT",
-    body:JSON.stringify({
-      isWorkingDay:$(`work${day}`).checked,
-      normalStartTime:$(`start${day}`).value||null,
-      automaticFinishTime:$(`finish${day}`).value||null,
-      unpaidBreakMinutes:Number($(`break${day}`).value||0),
-      autoFinishEnabled:$(`auto${day}`).checked
-    })
-  });
+  const button=document.querySelector(`button[onclick="saveDay(${day})"]`);
+  const originalText=button?button.textContent:"Save";
 
-  await loadSchedule();
+  if(button){
+    button.disabled=true;
+    button.textContent="Saving...";
+  }
+
+  try{
+    await api(`/api/manager/schedule/${day}`,{
+      method:"PUT",
+      body:JSON.stringify({
+        isWorkingDay:$(`work${day}`).checked,
+        normalStartTime:$(`start${day}`).value||null,
+        automaticFinishTime:$(`finish${day}`).value||null,
+        unpaidBreakMinutes:Number($(`break${day}`).value||0),
+        autoFinishEnabled:$(`auto${day}`).checked
+      })
+    });
+
+    if(button){
+      button.textContent="Saved ✓";
+      setTimeout(()=>{
+        button.disabled=false;
+        button.textContent=originalText;
+      },1200);
+    }
+  }catch(e){
+    if(button){
+      button.disabled=false;
+      button.textContent=originalText;
+    }
+    alert(e.message);
+  }
 };
 
 async function loadOvertime(){const d=await api("/api/manager/overtime");$("overtime").innerHTML=`<div class="card"><h2>Overtime requests</h2><table><tr><th>Employee</th><th>Date/time</th><th>Duration</th><th>Reason</th><th>Status/action</th></tr>${d.map(o=>`<tr><td>${esc(o.first_name+" "+o.last_name)}</td><td>${String(o.work_date).slice(0,10)}<br>${String(o.start_time).slice(0,5)}–${String(o.finish_time).slice(0,5)}</td><td>${hrs(o.minutes)}</td><td>${esc(o.reason||"")}</td><td>${o.status==="pending"?`<button class="btn small success" onclick="reviewOt(${o.id},'approved')">Approve</button> <button class="btn small danger" onclick="reviewOt(${o.id},'rejected')">Reject</button>`:`<span class="pill">${o.status}</span>`}</td></tr>`).join("")}</table></div>`;}
