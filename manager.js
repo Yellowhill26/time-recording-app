@@ -486,7 +486,7 @@ async function loadWeekly(weekStart=null){
     <button class="btn small secondary" onclick="changeWeekly(7)">Next week →</button>
   </div>
 </div>
-<a class="btn secondary" href="/api/manager/weekly-review.csv?weekStart=${d.weekStart}">Download CSV</a>
+<button class="btn secondary" onclick="downloadWeeklyCSV()">Download CSV</button>
       </div>
 
       <table>
@@ -541,6 +541,36 @@ window.changeWeekly=days=>{
   const d=new Date(window.currentWeeklyStart+"T12:00:00");
   d.setDate(d.getDate()+days);
   loadWeekly(d.toISOString().slice(0,10));
+};
+window.downloadWeeklyCSV=async()=>{
+  const d=await api(`/api/manager/weekly-review?weekStart=${window.currentWeeklyStart}`);
+
+  const cell=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+
+  const lines=[
+    ["Employee","Regular","Approved OT","Pending OT","Annual leave","Bank holiday","Total hours","Target"],
+    ...d.rows.map(r=>[
+      r.name,
+      hrs(r.regularMinutes),
+      hrs(r.approvedOvertimeMinutes),
+      hrs(r.pendingOvertimeMinutes),
+      hrs(r.leaveMinutes),
+      hrs(r.bankHolidayMinutes||0),
+      hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes+(r.bankHolidayMinutes||0)),
+      hrs(r.weeklyTarget)
+    ])
+  ];
+
+  const csv=lines.map(row=>row.map(cell).join(",")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+
+  a.href=url;
+  a.download=`weekly-review-${d.weekStart}.csv`;
+  a.click();
+
+  URL.revokeObjectURL(url);
 };
 init();
 async function loadCorrections(){
