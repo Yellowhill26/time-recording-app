@@ -157,13 +157,29 @@ async function loadOvertime(){const d=await api("/api/manager/overtime");$("over
 window.reviewOt=async(id,status)=>{await api(`/api/manager/overtime/${id}/review`,{method:"POST",body:JSON.stringify({status})});loadOvertime();};
 
 function leaveHoursForDate(dateString){
-  if(!dateString) return 0;
-  const d=new Date(dateString+"T12:00:00");
-  const day=d.getDay();
+  if(!dateString)return 0;
 
-  if(day>=1 && day<=4) return 8.5; // Monday-Thursday
-  if(day===5) return 6;            // Friday
-  return 0;                        // Saturday/Sunday
+  const d=new Date(dateString+"T12:00:00");
+  const jsDay=d.getDay();
+  const dayOfWeek=jsDay===0?7:jsDay;
+
+  const schedule=(window.leaveSchedule||[]);
+  const rule=schedule.find(r=>Number(r.day_of_week)===dayOfWeek);
+
+  if(!rule || !rule.is_working_day || !rule.normal_start_time || !rule.automatic_finish_time){
+    return 0;
+  }
+
+  const toMinutes=time=>{
+    const parts=String(time).split(":");
+    return Number(parts[0])*60+Number(parts[1]);
+  };
+
+  const start=toMinutes(rule.normal_start_time);
+  const finish=toMinutes(rule.automatic_finish_time);
+  const unpaidBreak=Math.max(0,Number(rule.unpaid_break_minutes??30));
+
+  return Math.max(0,(finish-start-unpaidBreak)/60);
 }
 
 function updateLeaveHours(){
@@ -173,10 +189,13 @@ function updateLeaveHours(){
 }
 
 async function loadLeave(){
-  const [emps,leave]=await Promise.all([
-    api("/api/manager/employees"),
-    api("/api/manager/leave")
-  ]);
+ const [emps,leave,schedule]=await Promise.all([
+  api("/api/manager/employees"),
+  api("/api/manager/leave"),
+  api("/api/manager/schedule")
+]);
+
+window.leaveSchedule=schedule;
 
   $("leave").innerHTML=`
     <div class="card">
