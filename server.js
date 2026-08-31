@@ -136,7 +136,20 @@ app.post('/api/employee/event',async(req,res)=>{let e=await emp(req);if(!e)retur
 app.post('/api/employee/overtime',async(req,res)=>{let e=await emp(req);if(!e)return res.status(401).json({error:'This phone is not paired'});let {workDate,startTime,finishTime,reason}=req.body;if(!workDate||!startTime||!finishTime)return res.status(400).json({error:'Date, start and finish time are required'});let mins=hrsBetween(`${workDate}T${startTime}:00`,`${workDate}T${finishTime}:00`);if(mins<=0||mins>720)return res.status(400).json({error:'Overtime must be between 1 minute and 12 hours'});let r=await q(`INSERT INTO overtime_requests(employee_id,work_date,start_time,finish_time,minutes,reason) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[e.id,workDate,startTime,finishTime,mins,String(reason||'').slice(0,500)]);await audit('employee',e.id,'overtime_submitted',{requestId:r.rows[0].id});res.json({ok:true})});
 app.post('/api/manager/login',async(req,res)=>{let email=String(req.body.email||'').trim().toLowerCase(),r=await q(`SELECT * FROM manager_users WHERE email=$1 AND is_active=TRUE`,[email]);if(!r.rows.length||!(await bcrypt.compare(String(req.body.password||''),r.rows[0].password_hash)))return res.status(401).json({error:'Incorrect email or password'});req.session.managerId=r.rows[0].id;req.session.managerName=r.rows[0].name;res.json({ok:true,name:r.rows[0].name})});
 app.post('/api/manager/logout',(req,res)=>req.session.destroy(()=>res.json({ok:true})));app.get('/api/manager/session',(req,res)=>req.session.managerId?res.json({id:req.session.managerId,name:req.session.managerName}):res.status(401).json({error:'Not signed in'}));
-app.get('/api/manager/employees',manager,async(req,res)=>res.json((await q(`SELECT * FROM employees ORDER BY id`)).rows));
+app.get('/api/manager/employees',manager,async(req,res)=>{
+  const r=await q(`
+    SELECT e.*,
+      EXISTS(
+        SELECT 1
+        FROM employee_devices d
+        WHERE d.employee_id=e.id
+          AND d.revoked_at IS NULL
+      ) AS phone_paired
+    FROM employees e
+    ORDER BY e.id
+  `);
+  res.json(r.rows);
+});
 app.get('/api/manager/time-corrections',manager,async(req,res)=>{
   try{
     const employeeId=Number(req.query.employeeId);
