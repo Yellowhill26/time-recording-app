@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS clock_events(id SERIAL PRIMARY KEY,employee_id INTEGE
 CREATE TABLE IF NOT EXISTS overtime_requests(id SERIAL PRIMARY KEY,employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,work_date DATE NOT NULL,start_time TIME NOT NULL,finish_time TIME NOT NULL,minutes INTEGER NOT NULL,reason TEXT,status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),reviewed_at TIMESTAMPTZ,reviewed_by INTEGER REFERENCES manager_users(id),manager_note TEXT);
 CREATE TABLE IF NOT EXISTS leave_records(id SERIAL PRIMARY KEY,employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,leave_date DATE NOT NULL,leave_type VARCHAR(30) NOT NULL DEFAULT 'annual_leave',minutes_credit INTEGER NOT NULL DEFAULT 480,notes TEXT,created_by INTEGER REFERENCES manager_users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(employee_id,leave_date,leave_type));
 CREATE TABLE IF NOT EXISTS audit_log(id BIGSERIAL PRIMARY KEY,actor_type VARCHAR(30) NOT NULL,actor_id INTEGER,action VARCHAR(100) NOT NULL,details JSONB NOT NULL DEFAULT '{}'::jsonb,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+await q(`ALTER TABLE leave_records ADD COLUMN IF NOT EXISTS leave_amount NUMERIC(4,2) NOT NULL DEFAULT 1`);
 await q(`ALTER TABLE work_schedule ADD COLUMN IF NOT EXISTS unpaid_break_minutes INTEGER NOT NULL DEFAULT 30`);
 for(const r of [[1,true,"08:00","17:00",true],[2,true,"08:00","17:00",true],[3,true,"08:00","17:00",true],[4,true,"08:00","17:00",true],[5,true,"08:00","14:00",true],[6,false,null,null,false],[7,false,null,null,false]])await q(`INSERT INTO work_schedule(day_of_week,is_working_day,normal_start_time,automatic_finish_time,auto_finish_enabled) VALUES($1,$2,$3,$4,$5) ON CONFLICT(day_of_week) DO NOTHING`,r);
 let c=await q(`SELECT COUNT(*)::int n FROM employees`);if(c.rows[0].n===0)for(let i=1;i<=6;i++)await q(`INSERT INTO employees(employee_number,first_name) VALUES($1,$2)`,[`EMP${String(i).padStart(2,"0")}`,`Employee ${i}`]);
@@ -371,7 +372,37 @@ app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
 app.get('/api/manager/overtime',manager,async(req,res)=>res.json((await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END,o.submitted_at DESC`)).rows));
 app.post('/api/manager/overtime/:id/review',manager,async(req,res)=>{if(!['approved','rejected'].includes(req.body.status))return res.status(400).json({error:'Invalid status'});await q(`UPDATE overtime_requests SET status=$2,reviewed_at=NOW(),reviewed_by=$3,manager_note=$4 WHERE id=$1`,[Number(req.params.id),req.body.status,req.session.managerId,String(req.body.note||'').slice(0,500)]);res.json({ok:true})});
 app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id WHERE l.leave_date>=CURRENT_DATE-INTERVAL '60 days' ORDER BY l.leave_date DESC`)).rows));
-app.post('/api/manager/leave',manager,async(req,res)=>{let b=req.body;await q(`INSERT INTO leave_records(employee_id,leave_date,minutes_credit,notes,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(employee_id,leave_date,leave_type) DO UPDATE SET minutes_credit=EXCLUDED.minutes_credit,notes=EXCLUDED.notes`,[Number(b.employeeId),b.leaveDate,Number(b.minutesCredit||480),String(b.notes||'').slice(0,500),req.session.managerId]);res.json({ok:true})});
+app.post('/api/manager/leave',manager,async(req,res)=>{
+  let b=req.body;
+
+  await q(
+    `INSERT INTO leave_records(
+       employee_id,
+       leave_date,
+       minutes_credit,
+       leave_amount,
+       notes,
+       created_by
+     )
+     VALUES($1,$2,$3,$4,$5,$6)
+     ON CONFLICT(employee_id,leave_date,leave_type)
+     DO UPDATE SET
+       minutes_credit=EXCLUDED.minutes_credit,
+       leave_amount=EXCLUDED.leave_amount,
+       notes=EXCLUDED.notes,
+       created_by=EXCLUDED.created_by`,
+    [
+      Number(b.employeeId),
+      b.leaveDate,
+      Number(b.minutesCredit),
+      Number(b.leaveAmount||1),
+      b.notes||'',
+      req.session.managerId
+    ]
+  );
+
+  res.json({ok:true});
+});
 app.delete('/api/manager/leave/:id',manager,async(req,res)=>{await q(`DELETE FROM leave_records WHERE id=$1`,[Number(req.params.id)]);res.json({ok:true})});
 app.get('/api/manager/weekly-review',manager,async(req,res)=>{
   const start=req.query.weekStart||weekStart();
