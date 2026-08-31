@@ -257,15 +257,17 @@ function updateLeaveHours(){
   }
 }
 async function loadLeave(){
-const [emps,leave,schedule,summary]=await Promise.all([
+const [emps,leave,schedule,summary,bankHolidays]=await Promise.all([
   api("/api/manager/employees"),
   api("/api/manager/leave"),
   api("/api/manager/schedule"),
-  api("/api/manager/leave-summary")
+  api("/api/manager/leave-summary"),
+  api("/api/manager/bank-holidays")
 ]);
 
 window.leaveSchedule=schedule;
 window.leaveRecords=leave;
+window.bankHolidays=bankHolidays; 
   $("leave").innerHTML=`
     <div class="card">
       <h2>Add annual leave</h2>
@@ -338,6 +340,41 @@ window.leaveRecords=leave;
 `).join("")}
   </table>
 </div>
+<div class="card">
+  <h2>Bank holidays</h2>
+
+  <div class="grid two">
+    <div>
+      <label>Date</label>
+      <input type="date" id="bankHolidayDate">
+    </div>
+
+    <div>
+      <label>Name</label>
+      <input id="bankHolidayName" placeholder="e.g. Summer Bank Holiday">
+    </div>
+  </div>
+
+  <button class="btn" onclick="addBankHoliday()">Add bank holiday</button>
+
+  <table>
+    <tr>
+      <th>Date</th>
+      <th>Bank holiday</th>
+    </tr>
+
+    ${bankHolidays.length ? bankHolidays.map(b=>`
+      <tr>
+        <td>${String(b.holiday_date).slice(0,10)}</td>
+        <td>${esc(b.name)}</td>
+      </tr>
+    `).join("") : `
+      <tr>
+        <td colspan="2" class="muted">No bank holidays added yet.</td>
+      </tr>
+    `}
+  </table>
+</div>
 `;
    $("leaveDate").value=new Date().toISOString().slice(0,10);
   updateLeaveHours();
@@ -400,7 +437,22 @@ window.addLeave=async()=>{
 
   loadLeave();
 };
+window.addBankHoliday=async()=>{
+  const holidayDate=$("bankHolidayDate").value;
+  const name=$("bankHolidayName").value.trim();
 
+  if(!holidayDate||!name){
+    alert("Please enter a date and bank holiday name.");
+    return;
+  }
+
+  await api("/api/manager/bank-holidays",{
+    method:"POST",
+    body:JSON.stringify({holidayDate,name})
+  });
+
+  loadLeave();
+};
 window.removeLeave=async id=>{
   if(confirm("Remove this annual leave entry?")){
     await api(`/api/manager/leave/${id}`,{method:"DELETE"});
