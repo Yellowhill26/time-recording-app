@@ -466,6 +466,14 @@ app.get('/api/manager/leave-summary',manager,async(req,res)=>{
     }))
   });
 });
+app.get('/api/manager/bank-holidays',manager,async(req,res)=>res.json((await q(`SELECT * FROM bank_holidays ORDER BY holiday_date DESC`)).rows));
+app.post('/api/manager/bank-holidays',manager,async(req,res)=>{
+  const {holidayDate,name}=req.body;
+  if(!holidayDate||!name)return res.status(400).json({error:'Date and name are required'});
+  const r=await q(`INSERT INTO bank_holidays(holiday_date,name) VALUES($1,$2) RETURNING *`,[holidayDate,name]);
+  await audit('manager',req.session.managerId,'bank_holiday_added',{holidayDate,name});
+  res.json(r.rows[0]);
+});
 app.post('/api/manager/leave',manager,async(req,res)=>{
   let b=req.body;
 
