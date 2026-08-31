@@ -321,18 +321,30 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
     const firstName=req.body.firstName!==undefined ? String(req.body.firstName).trim() : current.first_name;
     const lastName=req.body.lastName!==undefined ? String(req.body.lastName).trim() : current.last_name;
     const weeklyMinutes=req.body.weeklyMinutes!==undefined ? Number(req.body.weeklyMinutes) : current.weekly_minutes;
+    const holidayEntitlementDays=req.body.holidayEntitlementDays!==undefined ? Number(req.body.holidayEntitlementDays) : Number(current.holiday_entitlement_days||0);
     const isActive=req.body.isActive!==undefined ? Boolean(req.body.isActive) : current.is_active;
 
     if(!firstName) return res.status(400).json({error:'First name is required'});
     if(!Number.isFinite(weeklyMinutes)||weeklyMinutes<=0) return res.status(400).json({error:'Weekly target is invalid'});
-
-    const r=await q(
-      `UPDATE employees
-       SET first_name=$1,last_name=$2,weekly_minutes=$3,is_active=$4
-       WHERE id=$5
-       RETURNING *`,
-      [firstName,lastName,Math.round(weeklyMinutes),isActive,id]
-    );
+    if(!Number.isFinite(holidayEntitlementDays)||holidayEntitlementDays<0) return res.status(400).json({error:'Holiday entitlement is invalid'});
+   const r=await q(
+  `UPDATE employees
+   SET first_name=$1,
+       last_name=$2,
+       weekly_minutes=$3,
+       is_active=$4,
+       holiday_entitlement_days=$5
+   WHERE id=$6
+   RETURNING *`,
+  [
+    firstName,
+    lastName,
+    Math.round(weeklyMinutes),
+    isActive,
+    holidayEntitlementDays,
+    id
+  ]
+);
 
     await audit('manager',req.session.managerId,'employee_updated',{employeeId:id});
     res.json(r.rows[0]);
