@@ -41,7 +41,7 @@ async function loadEmployees(){
   <table><tr><th>No.</th><th>Name</th><th>Weekly target</th><th>Actions</th></tr>
   ${active.map(e=>`<tr><td>${esc(e.employee_number)}</td><td>${esc(e.first_name+" "+e.last_name)}</td><td>${hrs(e.weekly_minutes)}</td><td><button class="btn small secondary" onclick="editEmployee(${e.id})">Edit</button> <button class="btn small" onclick="pair(${e.id},'${esc((e.first_name+" "+e.last_name).replaceAll("'",""))}')">Pair phone</button> <button class="btn small secondary" onclick="unpair(${e.id})">Unpair</button> <button class="btn small danger" onclick="setEmployeeActive(${e.id},false)">Deactivate</button></td></tr>`).join("")}
   </table></div>
-  ${inactive.length?`<div class="card"><h2>Inactive employees</h2><table><tr><th>No.</th><th>Name</th><th>Action</th></tr>${inactive.map(e=>`<tr><td>${esc(e.employee_number)}</td><td>${esc(e.first_name+" "+e.last_name)}</td><td><button class="btn small success" onclick="setEmployeeActive(${e.id},true)">Reactivate</button></td></tr>`).join("")}</table></div>`:""}`;
+  ${inactive.length?`<div class="card"><h2>Inactive employees</h2><table><tr><th>No.</th><th>Name</th><th>Action</th></tr>${inactive.map(e=>`<tr><td>${esc(e.employee_number)}</td><td>${esc(e.first_name+" "+e.last_name)}</td><td><button class="btn small success" onclick="setEmployeeActive(${e.id},true)">Reactivate</button><button class="btn small danger" onclick="deleteEmployee(${e.id},'${esc(e.first_name+" "+e.last_name)}')">Delete</button></td></tr>`).join("")}</table></div>`:""}`;
 }
 
 window.addEmployee=async()=>{
@@ -80,7 +80,12 @@ window.setEmployeeActive=async(id,isActive)=>{
   await loadEmployees();
   await loadDashboard();
 };
-
+window.deleteEmployee=async(id,name)=>{
+  if(!confirm(`Permanently delete ${name}?\n\nThis cannot be undone.`))return;
+  await api(`/api/manager/employees/${id}`,{method:"DELETE"});
+  await loadEmployees();
+  await loadDashboard();
+};
 window.pair=async(id,name)=>{const d=await api(`/api/manager/employees/${id}/pairing-code`,{method:"POST"});alert(`Pairing code for ${name}: ${d.code}\n\nValid for ${d.expiresInMinutes} minutes.`);};
 window.unpair=async id=>{if(confirm("Unpair all phones for this employee?")){await api(`/api/manager/employees/${id}/unpair`,{method:"POST"});alert("Phone(s) unpaired.");}};
 
