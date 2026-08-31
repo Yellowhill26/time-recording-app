@@ -361,16 +361,18 @@ window.bankHolidays=bankHolidays;
     <tr>
       <th>Date</th>
       <th>Bank holiday</th>
+      <th>Action</th>
     </tr>
 
     ${bankHolidays.length ? bankHolidays.map(b=>`
       <tr>
         <td>${new Date(b.holiday_date).toLocaleDateString("en-GB")}</td>
         <td>${esc(b.name)}</td>
+        <td><button class="btn small danger" onclick="removeBankHoliday(${b.id})">Delete</button></td>
       </tr>
     `).join("") : `
       <tr>
-        <td colspan="2" class="muted">No bank holidays added yet.</td>
+        <td colspan="3" class="muted">No bank holidays added yet.</td>
       </tr>
     `}
   </table>
@@ -452,6 +454,12 @@ window.addBankHoliday=async()=>{
   });
 
   loadLeave();
+};
+window.removeBankHoliday=async id=>{
+  if(confirm("Delete this bank holiday?")){
+    await api(`/api/manager/bank-holidays/${id}`,{method:"DELETE"});
+    loadLeave();
+  }
 };
 window.removeLeave=async id=>{
   if(confirm("Remove this annual leave entry?")){
