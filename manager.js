@@ -488,6 +488,7 @@ async function loadWeekly(weekStart=null){
           <th>Approved OT</th>
           <th>Pending OT</th>
           <th>Annual leave</th>
+          <th>Bank holiday</th>
           <th>Total hours</th>
           <th>Target</th>
         </tr>
@@ -498,12 +499,13 @@ async function loadWeekly(weekStart=null){
     <td>${hrs(r.regularMinutes)}</td>
     <td>${hrs(r.approvedOvertimeMinutes)}</td>
     <td>${hrs(r.pendingOvertimeMinutes)}</td>
+    <td>${hrs(r.bankHolidayMinutes||0)}</td>
     <td>${hrs(r.leaveMinutes)}</td>
-    <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes)}</strong></td>
+    <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes+(r.bankHolidayMinutes||0))}</strong></td>
     <td>${hrs(r.weeklyTarget)}</td>
   </tr>
   <tr>
-    <td colspan="7">
+    <td colspan="8">
       <div class="muted" style="padding:8px 0">
         ${
           (r.dailyTimes||[]).length
