@@ -194,10 +194,11 @@ function updateLeaveHours(){
   }
 }
 async function loadLeave(){
- const [emps,leave,schedule]=await Promise.all([
+const [emps,leave,schedule,summary]=await Promise.all([
   api("/api/manager/employees"),
   api("/api/manager/leave"),
-  api("/api/manager/schedule")
+  api("/api/manager/schedule"),
+  api("/api/manager/leave-summary")
 ]);
 
 window.leaveSchedule=schedule;
@@ -244,7 +245,27 @@ window.leaveSchedule=schedule;
         <button class="btn" onclick="addLeave()">Mark as annual leave</button>
       </div>
     </div>
+<div class="card">
+  <h2>Annual leave balance - ${summary.year}</h2>
 
+  <table>
+    <tr>
+      <th>Employee</th>
+      <th>Entitlement</th>
+      <th>Taken</th>
+      <th>Remaining</th>
+    </tr>
+
+    ${summary.rows.map(r=>`
+      <tr>
+        <td>${esc(r.name)}</td>
+        <td>${Number(r.entitlement).toFixed(1)} days</td>
+        <td>${Number(r.taken).toFixed(1)} days</td>
+        <td><strong>${Number(r.remaining).toFixed(1)} days</strong></td>
+      </tr>
+    `).join("")}
+  </table>
+</div>
     <div class="card">
       <h2>Recent leave</h2>
 
