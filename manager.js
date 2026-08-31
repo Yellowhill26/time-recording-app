@@ -185,8 +185,11 @@ function leaveHoursForDate(dateString){
 function updateLeaveHours(){
   const date=$("leaveDate")?.value;
   const hours=$("leaveHours");
-  if(hours) hours.value=leaveHoursForDate(date);
-}
+  const amount=Number($("leaveAmount")?.value||1);
+
+  if(hours){
+    hours.value=leaveHoursForDate(date)*amount;
+  }
 
 async function loadLeave(){
  const [emps,leave,schedule]=await Promise.all([
@@ -217,7 +220,13 @@ window.leaveSchedule=schedule;
           <label>Date</label>
           <input type="date" id="leaveDate" onchange="updateLeaveHours()">
         </div>
-
+<div>
+  <label>Leave amount</label>
+  <select id="leaveAmount" onchange="updateLeaveHours()">
+    <option value="1">Full day</option>
+    <option value="0.5">Half day</option>
+  </select>
+</div>
         <div>
           <label>Paid hours credit</label>
           <input type="number" id="leaveHours" min="0" max="24" step="0.5">
@@ -272,6 +281,7 @@ window.addLeave=async()=>{
     body:JSON.stringify({
       employeeId:$("leaveEmp").value,
       leaveDate:$("leaveDate").value,
+      leaveAmount:Number($("leaveAmount").value||1),
       minutesCredit:Math.round(Number($("leaveHours").value)*60),
       notes:$("leaveNote").value
     })
