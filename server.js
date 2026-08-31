@@ -513,7 +513,12 @@ app.get('/api/manager/weekly-review',manager,async(req,res)=>{
   const es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`);
   const rows=[];
   const schedule=(await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows;
-
+const bankHolidays=(await q(`
+  SELECT holiday_date::text AS holiday_date,name
+  FROM bank_holidays
+  WHERE holiday_date BETWEEN $1::date AND $2::date
+  ORDER BY holiday_date
+`,[start,end])).rows;
   for(const e of es.rows){
     const ev=await q(`
       SELECT event_type,event_time
@@ -559,7 +564,20 @@ app.get('/api/manager/weekly-review',manager,async(req,res)=>{
       WHERE employee_id=$1
         AND leave_date BETWEEN $2 AND $3
     `,[e.id,start,end])).rows[0].n;
+const bankHolidayMinutes=bankHolidays.reduce((total,b)=>{
+  const date=new Date(String(b.holiday_date).slice(0,10)+"T12:00:00");
+  let day=date.getDay();
+  if(day===0)day=7;
 
+  const s=schedule.find(x=>Number(x.day_of_week)===day);
+  if(!s||!s.is_working_day||!s.normal_start_time||!s.automatic_finish_time)return total;
+
+  const [sh,sm]=String(s.normal_start_time).split(":").map(Number);
+  const [fh,fm]=String(s.automatic_finish_time).split(":").map(Number);
+  const minutes=(fh*60+fm)-(sh*60+sm)-Number(s.unpaid_break_minutes||0);
+
+  return total+Math.max(0,minutes);
+},0);
     rows.push({
       id:e.id,
       name:`${e.first_name} ${e.last_name}`.trim(),
@@ -567,6 +585,7 @@ app.get('/api/manager/weekly-review',manager,async(req,res)=>{
       approvedOvertimeMinutes:a,
       pendingOvertimeMinutes:p,
       leaveMinutes:l,
+      bankHolidayMinutes,
       weeklyTarget:e.weekly_minutes,
       dailyTimes:daily.rows.map(d=>({
         date:d.work_date,
