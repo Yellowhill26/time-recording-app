@@ -408,17 +408,25 @@ window.removeLeave=async id=>{
   }
 };
 
-async function loadWeekly(){
-  const d=await api("/api/manager/weekly-review");
+async function loadWeekly(weekStart=null){
+  const url=weekStart
+    ? `/api/manager/weekly-review?weekStart=${weekStart}`
+    : "/api/manager/weekly-review";
+  const d=await api(url);
+  window.currentWeeklyStart=d.weekStart;
 
   $("weekly").innerHTML=`
     <div class="card">
       <div class="actions" style="justify-content:space-between">
         <div>
-          <h2 style="margin:0">Weekly review</h2>
-          <div class="muted">${d.weekStart} to ${d.weekEnd}</div>
-        </div>
-        <a class="btn secondary" href="/api/manager/weekly-review.csv?weekStart=${d.weekStart}">Download CSV</a>
+  <h2 style="margin:0">Weekly review</h2>
+  <div class="muted">${d.weekStart} to ${d.weekEnd}</div>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <button class="btn small secondary" onclick="changeWeekly(-7)">← Previous week</button>
+    <button class="btn small secondary" onclick="changeWeekly(7)">Next week →</button>
+  </div>
+</div>
+<a class="btn secondary" href="/api/manager/weekly-review.csv?weekStart=${d.weekStart}">Download CSV</a>
       </div>
 
       <table>
@@ -467,6 +475,11 @@ async function loadWeekly(){
       </table>
     </div>`;
 }
+window.changeWeekly=days=>{
+  const d=new Date(window.currentWeeklyStart+"T12:00:00");
+  d.setDate(d.getDate()+days);
+  loadWeekly(d.toISOString().slice(0,10));
+};
 init();
 async function loadCorrections(){
   const panel=document.getElementById("corrections");
