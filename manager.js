@@ -161,7 +161,64 @@ window.saveDay=async day=>{
   }
 };
 
-async function loadOvertime(){const d=await api("/api/manager/overtime");$("overtime").innerHTML=`<div class="card"><h2>Overtime requests</h2><table><tr><th>Employee</th><th>Date/time</th><th>Duration</th><th>Reason</th><th>Status/action</th></tr>${d.map(o=>`<tr><td>${esc(o.first_name+" "+o.last_name)}</td><td>${String(o.work_date).slice(0,10)}<br>${String(o.start_time).slice(0,5)}–${String(o.finish_time).slice(0,5)}</td><td>${hrs(o.minutes)}</td><td>${esc(o.reason||"")}</td><td>${o.status==="pending"?`<button class="btn small success" onclick="reviewOt(${o.id},'approved')">Approve</button> <button class="btn small danger" onclick="reviewOt(${o.id},'rejected')">Reject</button>`:`<span class="pill">${o.status}</span>`}</td></tr>`).join("")}</table></div>`;}
+async function loadOvertime(){
+  const d=await api("/api/manager/overtime");
+
+  const grouped={};
+
+  d.forEach(o=>{
+    const key=o.employee_id;
+
+    if(!grouped[key]){
+      grouped[key]={
+        name:`${o.first_name} ${o.last_name}`.trim(),
+        requests:[]
+      };
+    }
+
+    grouped[key].requests.push(o);
+  });
+
+  $("overtime").innerHTML=`
+    <div class="card">
+      <h2>Overtime requests</h2>
+
+      ${Object.values(grouped).length
+        ? Object.values(grouped).map(emp=>`
+            <details style="margin-bottom:12px">
+              <summary style="cursor:pointer;font-weight:600;padding:10px 0">
+                ${esc(emp.name)}
+              </summary>
+
+              <table>
+                <tr>
+                  <th>Date/time</th>
+                  <th>Duration</th>
+                  <th>Reason</th>
+                  <th>Status/action</th>
+                </tr>
+
+                ${emp.requests.map(o=>`
+                  <tr>
+                    <td>${String(o.work_date).slice(0,10)}<br>${String(o.start_time).slice(0,5)}–${String(o.finish_time).slice(0,5)}</td>
+                    <td>${hrs(o.minutes)}</td>
+                    <td>${esc(o.reason||"")}</td>
+                    <td>
+                      ${o.status==="pending"
+                        ? `<button class="btn small success" onclick="reviewOt(${o.id},'approved')">Approve</button>
+                           <button class="btn small danger" onclick="reviewOt(${o.id},'rejected')">Reject</button>`
+                        : esc(o.status)}
+                    </td>
+                  </tr>
+                `).join("")}
+              </table>
+            </details>
+          `).join("")
+        : `<p class="muted">No overtime requests recorded.</p>`
+      }
+    </div>
+  `;
+}
 window.reviewOt=async(id,status)=>{await api(`/api/manager/overtime/${id}/review`,{method:"POST",body:JSON.stringify({status})});loadOvertime();};
 
 function leaveHoursForDate(dateString){
