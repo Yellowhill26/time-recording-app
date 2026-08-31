@@ -275,6 +275,7 @@ window.leaveRecords=leave;
 `).join("")}
   </table>
 </div>
+`;
    $("leaveDate").value=new Date().toISOString().slice(0,10);
   updateLeaveHours();
 }
