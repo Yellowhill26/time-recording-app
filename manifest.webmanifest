@@ -1,0 +1,9 @@
+{
+  "name": "D.Pawson Time Recording",
+  "short_name": "D.Pawson Time",
+  "start_url": "/employee",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f2f5f"
+}
