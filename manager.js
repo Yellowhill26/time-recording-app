@@ -202,7 +202,7 @@ const [emps,leave,schedule,summary]=await Promise.all([
 ]);
 
 window.leaveSchedule=schedule;
-
+window.leaveRecords=leave;
   $("leave").innerHTML=`
     <div class="card">
       <h2>Add annual leave</h2>
@@ -256,48 +256,70 @@ window.leaveSchedule=schedule;
       <th>Remaining</th>
     </tr>
 
-    ${summary.rows.map(r=>`
-      <tr>
-        <td>${esc(r.name)}</td>
-        <td>${Number(r.entitlement).toFixed(1)} days</td>
-        <td>${Number(r.taken).toFixed(1)} days</td>
-        <td><strong>${Number(r.remaining).toFixed(1)} days</strong></td>
-      </tr>
-    `).join("")}
+   ${summary.rows.map(r=>`
+  <tr>
+    <td>
+      <button class="btn small secondary" onclick="toggleLeaveHistory(${r.id})">
+        ${esc(r.name)}
+      </button>
+    </td>
+    <td>${Number(r.entitlement).toFixed(1)} days</td>
+    <td>${Number(r.taken).toFixed(1)} days</td>
+    <td><strong>${Number(r.remaining).toFixed(1)} days</strong></td>
+  </tr>
+  <tr id="leaveHistory${r.id}" style="display:none">
+    <td colspan="4">
+      <div id="leaveHistoryContent${r.id}" class="muted">Loading...</div>
+    </td>
+  </tr>
+`).join("")}
   </table>
 </div>
-    <div class="card">
-      <h2>Recent leave</h2>
+   $("leaveDate").value=new Date().toISOString().slice(0,10);
+  updateLeaveHours();
+}
+window.toggleLeaveHistory=id=>{
+  const row=document.getElementById(`leaveHistory${id}`);
+  const content=document.getElementById(`leaveHistoryContent${id}`);
 
+  if(!row || !content)return;
+
+  if(row.style.display!=="none"){
+    row.style.display="none";
+    return;
+  }
+
+  const records=(window.leaveRecords||[]).filter(
+    l=>Number(l.employee_id)===Number(id)
+  );
+
+  if(!records.length){
+    content.innerHTML="No annual leave recorded for this employee.";
+  }else{
+    content.innerHTML=`
       <table>
         <tr>
-          <th>Employee</th>
           <th>Date</th>
           <th>Leave amount</th>
           <th>Credit</th>
           <th></th>
         </tr>
-
-        ${leave.map(l=>`
+        ${records.map(l=>`
           <tr>
-            <td>${esc(l.first_name+" "+l.last_name)}</td>
             <td>${String(l.leave_date).slice(0,10)}</td>
             <td>${Number(l.leave_amount)===0.5 ? "Half day" : "Full day"}</td>
             <td>${hrs(l.minutes_credit)}</td>
             <td>
-              <button class="btn small danger" onclick="removeLeave(${l.id})">
-                Remove
-              </button>
+              <button class="btn small danger" onclick="removeLeave(${l.id})">Remove</button>
             </td>
           </tr>
         `).join("")}
       </table>
-    </div>`;
+    `;
+  }
 
-  $("leaveDate").value=new Date().toISOString().slice(0,10);
-  updateLeaveHours();
-}
-
+  row.style.display="";
+};
 window.updateLeaveHours=updateLeaveHours;
 
 window.addLeave=async()=>{
