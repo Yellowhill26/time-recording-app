@@ -474,6 +474,11 @@ app.post('/api/manager/bank-holidays',manager,async(req,res)=>{
   await audit('manager',req.session.managerId,'bank_holiday_added',{holidayDate,name});
   res.json(r.rows[0]);
 });
+app.delete('/api/manager/bank-holidays/:id',manager,async(req,res)=>{
+  await q(`DELETE FROM bank_holidays WHERE id=$1`,[Number(req.params.id)]);
+  await audit('manager',req.session.managerId,'bank_holiday_deleted',{id:Number(req.params.id)});
+  res.json({ok:true});
+});
 app.post('/api/manager/leave',manager,async(req,res)=>{
   let b=req.body;
 
