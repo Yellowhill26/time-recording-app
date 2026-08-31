@@ -15,6 +15,9 @@ app.use(session({store:new pgSession({pool,tableName:"user_sessions",createTable
 app.use("/styles.css", express.static(path.join(__dirname, "styles.css")));
 app.use("/employee.js", express.static(path.join(__dirname, "employee.js")));
 app.use("/manager.js", express.static(path.join(__dirname, "manager.js")));
+app.use("/manifest.webmanifest", express.static(path.join(__dirname, "manifest.webmanifest")));
+app.use("/app-icon.png", express.static(path.join(__dirname, "app-icon.png")));
+app.use("/apple-touch-icon.png", express.static(path.join(__dirname, "apple-touch-icon.png")));
 const q=(t,p=[])=>pool.query(t,p);const sha=v=>crypto.createHash("sha256").update(String(v)).digest("hex");const token=()=>crypto.randomBytes(32).toString("hex");const code=()=>String(Math.floor(100000+Math.random()*900000));
 const hrsBetween=(a,b)=>Math.max(0,Math.round((new Date(b)-new Date(a))/60000));
 const iso=d=>new Date(d).toISOString().slice(0,10);function weekStart(d=new Date()){d=new Date(d);d.setHours(0,0,0,0);let day=d.getDay();d.setDate(d.getDate()+(day===0?-6:1-day));return iso(d)}function addDays(s,n){let d=new Date(s+"T00:00:00");d.setDate(d.getDate()+n);return iso(d)}
