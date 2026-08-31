@@ -365,7 +365,7 @@ window.bankHolidays=bankHolidays;
 
     ${bankHolidays.length ? bankHolidays.map(b=>`
       <tr>
-        <td>${String(b.holiday_date).slice(0,10)}</td>
+        <td>${new Date(b.holiday_date).toLocaleDateString("en-GB")}</td>
         <td>${esc(b.name)}</td>
       </tr>
     `).join("") : `
