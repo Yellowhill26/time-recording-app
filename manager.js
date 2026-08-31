@@ -190,7 +190,7 @@ function updateLeaveHours(){
   if(hours){
     hours.value=leaveHoursForDate(date)*amount;
   }
-
+}
 async function loadLeave(){
  const [emps,leave,schedule]=await Promise.all([
   api("/api/manager/employees"),
