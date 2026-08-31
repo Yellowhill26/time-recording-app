@@ -385,6 +385,45 @@ app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
 app.get('/api/manager/overtime',manager,async(req,res)=>res.json((await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END,o.submitted_at DESC`)).rows));
 app.post('/api/manager/overtime/:id/review',manager,async(req,res)=>{if(!['approved','rejected'].includes(req.body.status))return res.status(400).json({error:'Invalid status'});await q(`UPDATE overtime_requests SET status=$2,reviewed_at=NOW(),reviewed_by=$3,manager_note=$4 WHERE id=$1`,[Number(req.params.id),req.body.status,req.session.managerId,String(req.body.note||'').slice(0,500)]);res.json({ok:true})});
 app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id WHERE l.leave_date>=CURRENT_DATE-INTERVAL '60 days' ORDER BY l.leave_date DESC`)).rows));
+app.get('/api/manager/leave-summary',manager,async(req,res)=>{
+  const year=Number(req.query.year)||new Date().getFullYear();
+
+  const r=await q(`
+    SELECT
+      e.id,
+      e.first_name,
+      e.last_name,
+      e.holiday_entitlement_days,
+      COALESCE(SUM(
+        CASE
+          WHEN EXTRACT(YEAR FROM l.leave_date)=$1
+          THEN l.leave_amount
+          ELSE 0
+        END
+      ),0)::numeric AS days_taken
+    FROM employees e
+    LEFT JOIN leave_records l
+      ON l.employee_id=e.id
+    WHERE e.is_active=TRUE
+    GROUP BY
+      e.id,
+      e.first_name,
+      e.last_name,
+      e.holiday_entitlement_days
+    ORDER BY e.id
+  `,[year]);
+
+  res.json({
+    year,
+    rows:r.rows.map(x=>({
+      id:x.id,
+      name:`${x.first_name} ${x.last_name}`.trim(),
+      entitlement:Number(x.holiday_entitlement_days||0),
+      taken:Number(x.days_taken||0),
+      remaining:Number(x.holiday_entitlement_days||0)-Number(x.days_taken||0)
+    }))
+  });
+});
 app.post('/api/manager/leave',manager,async(req,res)=>{
   let b=req.body;
 
