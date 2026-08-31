@@ -273,6 +273,7 @@ window.leaveSchedule=schedule;
         <tr>
           <th>Employee</th>
           <th>Date</th>
+          <th>Leave amount</th>
           <th>Credit</th>
           <th></th>
         </tr>
@@ -281,6 +282,7 @@ window.leaveSchedule=schedule;
           <tr>
             <td>${esc(l.first_name+" "+l.last_name)}</td>
             <td>${String(l.leave_date).slice(0,10)}</td>
+            <td>${Number(l.leave_amount)===0.5 ? "Half day" : "Full day"}</td>
             <td>${hrs(l.minutes_credit)}</td>
             <td>
               <button class="btn small danger" onclick="removeLeave(${l.id})">
