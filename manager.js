@@ -507,8 +507,8 @@ async function loadWeekly(weekStart=null){
     <td>${hrs(r.regularMinutes)}</td>
     <td>${hrs(r.approvedOvertimeMinutes)}</td>
     <td>${hrs(r.pendingOvertimeMinutes)}</td>
-    <td>${hrs(r.bankHolidayMinutes||0)}</td>
     <td>${hrs(r.leaveMinutes)}</td>
+    <td>${hrs(r.bankHolidayMinutes||0)}</td>    
     <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes+(r.bankHolidayMinutes||0))}</strong></td>
     <td>${hrs(r.weeklyTarget)}</td>
   </tr>
