@@ -63,9 +63,11 @@ window.editEmployee=async id=>{
   const firstName=prompt("First name",e.first_name);if(firstName===null)return;
   const lastName=prompt("Last name",e.last_name||"");if(lastName===null)return;
   const weeklyHours=prompt("Weekly target hours",String((e.weekly_minutes/60).toFixed(2).replace(/\.00$/,"")));if(weeklyHours===null)return;
+  const holidayDays=prompt("Annual holiday entitlement (days)",String(e.holiday_entitlement_days??0));if(holidayDays===null)return;
+  const holidayEntitlement=Number(holidayDays);
   const hours=Number(weeklyHours);
   if(!firstName.trim()||!Number.isFinite(hours)||hours<=0){alert("Please enter a valid first name and weekly hours.");return;}
-  await api(`/api/manager/employees/${id}`,{method:"PATCH",body:JSON.stringify({firstName:firstName.trim(),lastName:lastName.trim(),weeklyMinutes:Math.round(hours*60)})});
+  await api(`/api/manager/employees/${id}`,{method:"PATCH",body:JSON.stringify({firstName:firstName.trim(),lastName:lastName.trim(),weeklyMinutes:Math.round(hours*60),holidayEntitlementDays:holidayEntitlement})});
   await loadEmployees();
   await loadDashboard();
 };
