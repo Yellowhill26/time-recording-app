@@ -353,6 +353,44 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
     res.status(500).json({error:'Could not update employee'});
   }
 });
+app.delete('/api/manager/employees/:id',manager,async(req,res)=>{
+  try{
+    const id=Number(req.params.id);
+
+    const employee=(await q(
+      `SELECT id,employee_number,first_name,last_name,is_active
+       FROM employees
+       WHERE id=$1`,
+      [id]
+    )).rows[0];
+
+    if(!employee){
+      return res.status(404).json({error:'Employee not found'});
+    }
+
+    if(employee.is_active){
+      return res.status(400).json({error:'Employee must be deactivated before deletion'});
+    }
+
+    await q(`DELETE FROM employees WHERE id=$1`,[id]);
+
+    await audit(
+      'manager',
+      req.session.managerId,
+      'employee_deleted',
+      {
+        employeeId:id,
+        employeeNumber:employee.employee_number,
+        name:`${employee.first_name} ${employee.last_name}`.trim()
+      }
+    );
+
+    res.json({ok:true});
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not delete employee'});
+  }
+});
 app.post('/api/manager/employees/:id/pairing-code',manager,async(req,res)=>{let id=Number(req.params.id),c=code();await q(`UPDATE pairing_codes SET used_at=NOW() WHERE employee_id=$1 AND used_at IS NULL`,[id]);await q(`INSERT INTO pairing_codes(employee_id,code_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '30 minutes')`,[id,sha(c)]);res.json({code:c,expiresInMinutes:30})});
 app.post('/api/manager/employees/:id/unpair',manager,async(req,res)=>{await q(`UPDATE employee_devices SET revoked_at=NOW() WHERE employee_id=$1 AND revoked_at IS NULL`,[Number(req.params.id)]);res.json({ok:true})});
 app.get('/api/manager/dashboard',manager,async(req,res)=>{await autoOut();let es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),out=[],ws=weekStart(),schedule=(await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows;for(const e of es.rows){let st=await state(e.id),lv=await q(`SELECT 1 FROM leave_records WHERE employee_id=$1 AND leave_date=CURRENT_DATE LIMIT 1`,[e.id]),td=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]),wk=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,ws,addDays(ws,6)]);out.push({id:e.id,employeeNumber:e.employee_number,name:`${e.first_name} ${e.last_name}`.trim(),status:lv.rows.length?'annual leave':st,
