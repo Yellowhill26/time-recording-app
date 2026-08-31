@@ -4,6 +4,14 @@
   "start_url": "/employee",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0f2f5f"
+ "background_color": "#ffffff",
+"theme_color": "#0f2f5f",
+"icons": [
+  {
+    "src": "/app-icon.png",
+    "sizes": "any",
+    "type": "image/png",
+    "purpose": "any maskable"
+  }
+]
 }
