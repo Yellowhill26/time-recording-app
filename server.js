@@ -127,7 +127,70 @@ function worked(events,schedule=[]){
 
   return Math.max(0,total);
 }
-async function autoOut(){let d=new Date(),dow=d.getDay()||7,s=await q(`SELECT * FROM work_schedule WHERE day_of_week=$1`,[dow]);if(!s.rows.length||!s.rows[0].auto_finish_enabled||!s.rows[0].automatic_finish_time)return;let [h,m]=String(s.rows[0].automatic_finish_time).split(":").map(Number),cut=new Date(d);cut.setHours(h,m,0,0);if(d<cut)return;let a=await q(`SELECT e.id FROM employees e WHERE e.is_active=TRUE AND (SELECT event_type FROM clock_events c WHERE c.employee_id=e.id ORDER BY event_time DESC LIMIT 1) IN ('clock_in','break_end')`);for(const e of a.rows){let x=await q(`SELECT 1 FROM clock_events WHERE employee_id=$1 AND event_type='clock_out' AND event_time::date=CURRENT_DATE AND source='automatic' LIMIT 1`,[e.id]);if(!x.rows.length){await q(`INSERT INTO clock_events(employee_id,event_type,event_time,source,notes) VALUES($1,'clock_out',$2,'automatic','Automatic finish time')`,[e.id,cut]);await audit("system",null,"automatic_clock_out",{employeeId:e.id})}}}
+async function autoOut(){
+  const s=await q(`
+    SELECT *,
+      (NOW() AT TIME ZONE 'Europe/London')::date::text AS uk_date,
+      ((NOW() AT TIME ZONE 'Europe/London')::time >= automatic_finish_time) AS finish_reached
+    FROM work_schedule
+    WHERE day_of_week=EXTRACT(ISODOW FROM NOW() AT TIME ZONE 'Europe/London')::int
+  `);
+
+  if(
+    !s.rows.length ||
+    !s.rows[0].auto_finish_enabled ||
+    !s.rows[0].automatic_finish_time ||
+    !s.rows[0].finish_reached
+  ) return;
+
+  const rule=s.rows[0];
+
+  const a=await q(`
+    SELECT e.id
+    FROM employees e
+    WHERE e.is_active=TRUE
+      AND (
+        SELECT event_type
+        FROM clock_events c
+        WHERE c.employee_id=e.id
+        ORDER BY event_time DESC
+        LIMIT 1
+      ) IN ('clock_in','break_end')
+  `);
+
+  for(const e of a.rows){
+    const x=await q(`
+      SELECT 1
+      FROM clock_events
+      WHERE employee_id=$1
+        AND event_type='clock_out'
+        AND (event_time AT TIME ZONE 'Europe/London')::date=$2::date
+        AND source='automatic'
+      LIMIT 1
+    `,[e.id,rule.uk_date]);
+
+    if(!x.rows.length){
+      await q(`
+        INSERT INTO clock_events(
+          employee_id,
+          event_type,
+          event_time,
+          source,
+          notes
+        )
+        VALUES(
+          $1,
+          'clock_out',
+          (($2::date + $3::time) AT TIME ZONE 'Europe/London'),
+          'automatic',
+          'Automatic finish time'
+        )
+      `,[e.id,rule.uk_date,rule.automatic_finish_time]);
+
+      await audit("system",null,"automatic_clock_out",{employeeId:e.id});
+    }
+  }
+}
 setInterval(()=>autoOut().catch(console.error),60000);
 app.get('/api/health',async(req,res)=>{await q('SELECT 1');res.json({ok:true})});
 app.post('/api/employee/pair',async(req,res)=>{let c=String(req.body.code||'').trim();if(!/^\d{6}$/.test(c))return res.status(400).json({error:'Enter the 6-digit pairing code'});let r=await q(`SELECT p.id,p.employee_id,e.first_name,e.last_name FROM pairing_codes p JOIN employees e ON e.id=p.employee_id WHERE p.code_hash=$1 AND p.used_at IS NULL AND p.expires_at>NOW() AND e.is_active=TRUE ORDER BY p.created_at DESC LIMIT 1`,[sha(c)]);if(!r.rows.length)return res.status(400).json({error:'Pairing code is invalid or expired'});let t=token();await q(`INSERT INTO employee_devices(employee_id,token_hash,device_name,last_seen_at) VALUES($1,$2,$3,NOW())`,[r.rows[0].employee_id,sha(t),String(req.body.deviceName||'Employee phone').slice(0,120)]);await q(`UPDATE pairing_codes SET used_at=NOW() WHERE id=$1`,[r.rows[0].id]);res.json({deviceToken:t,employee:{id:r.rows[0].employee_id,name:`${r.rows[0].first_name} ${r.rows[0].last_name}`.trim()}})});
