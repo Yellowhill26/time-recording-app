@@ -87,9 +87,30 @@ function worked(events,schedule=[]){
     const d=days[key];
 
     if(e.event_type==="clock_in"){
-      d.start=t;
-      d.worked=true;
-    }else if(e.event_type==="break_start"&&d.start&&!d.breakStart){
+  const rule=scheduleByDay[d.dayOfWeek];
+  let paidStart=t;
+
+  if(rule&&rule.is_working_day&&rule.normal_start_time){
+    const parts=new Intl.DateTimeFormat("en-GB",{
+      timeZone:"Europe/London",
+      hour:"2-digit",
+      minute:"2-digit",
+      hour12:false
+    }).formatToParts(t);
+
+    const get=x=>parts.find(p=>p.type===x)?.value;
+    const actualMinutes=Number(get("hour"))*60+Number(get("minute"));
+    const [sh,sm]=String(rule.normal_start_time).split(":").map(Number);
+    const scheduledMinutes=sh*60+sm;
+
+    if(actualMinutes<scheduledMinutes){
+      paidStart=new Date(t.getTime()+(scheduledMinutes-actualMinutes)*60000);
+    }
+  }
+
+  d.start=paidStart;
+  d.worked=true;
+}else if(e.event_type==="break_start"&&d.start&&!d.breakStart){ 
       d.breakStart=t;
     }else if(e.event_type==="break_end"&&d.breakStart){
       d.breakMinutes+=Math.max(0,Math.round((t-d.breakStart)/60000));
