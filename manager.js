@@ -39,11 +39,59 @@ async function loadEmployees(){
   </div>
   <div class="card"><h2>Employees & phone pairing</h2>
   <table><tr><th>No.</th><th>Name</th><th>Weekly target</th><th>Phone status</th><th>Actions</th></tr>
-  ${active.map(e=>`<tr><td>${esc(e.employee_number)}</td><td>${esc(e.first_name+" "+e.last_name)}</td><td>${hrs(e.weekly_minutes)}</td><td>${e.phone_paired ? "✅ Paired" : "Not paired"}</td><td><button class="btn small secondary" onclick="editEmployee(${e.id})">Edit</button> <button class="btn small" onclick="pair(${e.id},'${esc((e.first_name+" "+e.last_name).replaceAll("'",""))}')">Pair phone</button> <button class="btn small secondary" onclick="unpair(${e.id})">Unpair</button> <button class="btn small danger" onclick="setEmployeeActive(${e.id},false)">Deactivate</button></td></tr>`).join("")}
+  ${active.map(e=>`<tr><td>${esc(e.employee_number)}</td><td><a href="#" onclick="showEmployeeDetails(${e.id});return false;">${esc(e.first_name+" "+e.last_name)}</a></td><td>${hrs(e.weekly_minutes)}</td><td>${e.phone_paired ? "✅ Paired" : "Not paired"}</td><td><button class="btn small secondary" onclick="editEmployee(${e.id})">Edit</button> <button class="btn small" onclick="pair(${e.id},'${esc((e.first_name+" "+e.last_name).replaceAll("'",""))}')">Pair phone</button> <button class="btn small secondary" onclick="unpair(${e.id})">Unpair</button> <button class="btn small danger" onclick="setEmployeeActive(${e.id},false)">Deactivate</button></td></tr>`).join("")}
   </table></div>
+  <div id="employeeDetails"></div>
   ${inactive.length?`<div class="card"><h2>Inactive employees</h2><table><tr><th>No.</th><th>Name</th><th>Action</th></tr>${inactive.map(e=>`<tr><td>${esc(e.employee_number)}</td><td>${esc(e.first_name+" "+e.last_name)}</td><td><button class="btn small success" onclick="setEmployeeActive(${e.id},true)">Reactivate</button><button class="btn small danger" onclick="deleteEmployee(${e.id},'${esc(e.first_name+" "+e.last_name)}')">Delete</button></td></tr>`).join("")}</table></div>`:""}`;
 }
+window.showEmployeeDetails=async id=>{
+  const rows=await api("/api/manager/employees");
+  const e=rows.find(x=>x.id===id);
+  if(!e)return;
 
+  $("employeeDetails").innerHTML=`
+    <div class="card">
+      <h2>${esc(e.first_name+" "+e.last_name)}</h2>
+      <p class="muted">${esc(e.employee_number)}</p>
+
+      <table>
+        <tr>
+          <th>Setting</th>
+          <th>Current setting</th>
+        </tr>
+        <tr>
+          <td>Weekly target</td>
+          <td>${hrs(e.weekly_minutes)}</td>
+        </tr>
+        <tr>
+          <td>Holiday entitlement</td>
+          <td>${Number(e.holiday_entitlement_days||0)} days</td>
+        </tr>
+        <tr>
+          <td>Status</td>
+          <td>${e.is_active ? "✅ Active" : "Inactive"}</td>
+        </tr>
+        <tr>
+          <td>Phone</td>
+          <td>${e.phone_paired ? "✅ Paired" : "Not paired"}</td>
+        </tr>
+        <tr>
+          <td>Automatic clock-out</td>
+          <td><strong>${e.auto_clock_out_enabled ? "ON" : "OFF"}</strong></td>
+        </tr>
+        <tr>
+          <td>Hours start</td>
+          <td>${e.auto_clock_out_enabled ? "Scheduled start time" : "Actual clock-in time"}</td>
+        </tr>
+      </table>
+
+      <div class="actions">
+        <button class="btn small secondary" onclick="editEmployee(${e.id})">Edit employee</button>
+        <button class="btn small secondary" onclick='$("employeeDetails").innerHTML=""'>Close</button>
+      </div>
+    </div>
+  `;
+};
 window.addEmployee=async()=>{
   try{
     const employeeNumber=$("newEmpNo").value.trim();
