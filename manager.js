@@ -66,9 +66,10 @@ window.editEmployee=async id=>{
   const weeklyHours=prompt("Weekly target hours",String((e.weekly_minutes/60).toFixed(2).replace(/\.00$/,"")));if(weeklyHours===null)return;
   const holidayDays=prompt("Annual holiday entitlement (days)",String(e.holiday_entitlement_days??0));if(holidayDays===null)return;
   const holidayEntitlement=Number(holidayDays);
+  const autoClockOutEnabled=confirm("Automatic clock-out for this employee?\n\nOK = ON\nCancel = OFF");
   const hours=Number(weeklyHours);
   if(!firstName.trim()||!Number.isFinite(hours)||hours<=0){alert("Please enter a valid first name and weekly hours.");return;}
-  await api(`/api/manager/employees/${id}`,{method:"PATCH",body:JSON.stringify({firstName:firstName.trim(),lastName:lastName.trim(),weeklyMinutes:Math.round(hours*60),holidayEntitlementDays:holidayEntitlement})});
+  await api(`/api/manager/employees/${id}`,{method:"PATCH",body:JSON.stringify({firstName:firstName.trim(),lastName:lastName.trim(),weeklyMinutes:Math.round(hours*60),holidayEntitlementDays:holidayEntitlement,autoClockOutEnabled:autoClockOutEnabled})});
   await loadEmployees();
   await loadDashboard();
 };
