@@ -75,10 +75,17 @@ window.showEmployeeDetails=async id=>{
           <td>Phone</td>
           <td>${e.phone_paired ? "✅ Paired" : "Not paired"}</td>
         </tr>
-        <tr>
-          <td>Automatic clock-out</td>
-          <td><strong>${e.auto_clock_out_enabled ? "ON" : "OFF"}</strong></td>
-        </tr>
+       <tr>
+  <td>Automatic clock-out</td>
+  <td>
+    <strong>${e.auto_clock_out_enabled ? "ON" : "OFF"}</strong>
+    <button
+      class="btn small secondary"
+      onclick="setEmployeeAutoClockOut(${e.id},${e.auto_clock_out_enabled ? "false" : "true"})">
+      Turn ${e.auto_clock_out_enabled ? "OFF" : "ON"}
+    </button>
+  </td>
+</tr>
         <tr>
           <td>Hours start</td>
           <td>${e.auto_clock_out_enabled ? "Scheduled start time" : "Actual clock-in time"}</td>
@@ -91,6 +98,16 @@ window.showEmployeeDetails=async id=>{
       </div>
     </div>
   `;
+};
+window.setEmployeeAutoClockOut=async(id,enabled)=>{
+  await api(`/api/manager/employees/${id}`,{
+    method:"PATCH",
+    body:JSON.stringify({autoClockOutEnabled:enabled})
+  });
+
+  await loadEmployees();
+  await showEmployeeDetails(id);
+  await loadDashboard();
 };
 window.addEmployee=async()=>{
   try{
