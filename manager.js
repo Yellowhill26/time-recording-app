@@ -100,14 +100,20 @@ window.showEmployeeDetails=async id=>{
   `;
 };
 window.setEmployeeAutoClockOut=async(id,enabled)=>{
-  await api(`/api/manager/employees/${id}`,{
-    method:"PATCH",
-    body:JSON.stringify({autoClockOutEnabled:enabled})
-  });
+  try{
+    await api(`/api/manager/employees/${id}`,{
+      method:"PATCH",
+      body:JSON.stringify({autoClockOutEnabled:enabled})
+    });
 
-  await loadEmployees();
-  await showEmployeeDetails(id);
-  await loadDashboard();
+    await loadEmployees();
+    await showEmployeeDetails(id);
+    await loadDashboard();
+
+    alert(`Automatic clock-out is now ${enabled ? "ON" : "OFF"}`);
+  }catch(e){
+    alert(`Could not change automatic clock-out: ${e.message}`);
+  }
 };
 window.addEmployee=async()=>{
   try{
