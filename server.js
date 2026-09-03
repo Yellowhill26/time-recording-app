@@ -436,7 +436,7 @@ const autoClockOutEnabled=req.body.autoClockOutEnabled!==undefined ? Boolean(req
        last_name=$2,
        weekly_minutes=$3,
        is_active=$4,
-       holiday_entitlement_days=$5
+       holiday_entitlement_days=$5,
        auto_clock_out_enabled=$6
    WHERE id=$7
    RETURNING *`,
