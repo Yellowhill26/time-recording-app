@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS leave_records(id SERIAL PRIMARY KEY,employee_id INTEG
 CREATE TABLE IF NOT EXISTS bank_holidays(id SERIAL PRIMARY KEY,holiday_date DATE NOT NULL UNIQUE,name VARCHAR(120) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS audit_log(id BIGSERIAL PRIMARY KEY,actor_type VARCHAR(30) NOT NULL,actor_id INTEGER,action VARCHAR(100) NOT NULL,details JSONB NOT NULL DEFAULT '{}'::jsonb,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
 await q(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS holiday_entitlement_days NUMERIC(5,2) NOT NULL DEFAULT 0`);
+await q(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS auto_clock_out_enabled BOOLEAN NOT NULL DEFAULT TRUE`);                      
 await q(`ALTER TABLE leave_records ADD COLUMN IF NOT EXISTS leave_amount NUMERIC(4,2) NOT NULL DEFAULT 1`);
 await q(`ALTER TABLE work_schedule ADD COLUMN IF NOT EXISTS unpaid_break_minutes INTEGER NOT NULL DEFAULT 30`);
 for(const r of [[1,true,"08:00","17:00",true],[2,true,"08:00","17:00",true],[3,true,"08:00","17:00",true],[4,true,"08:00","17:00",true],[5,true,"08:00","14:00",true],[6,false,null,null,false],[7,false,null,null,false]])await q(`INSERT INTO work_schedule(day_of_week,is_working_day,normal_start_time,automatic_finish_time,auto_finish_enabled) VALUES($1,$2,$3,$4,$5) ON CONFLICT(day_of_week) DO NOTHING`,r);
@@ -42,7 +43,7 @@ let email=(process.env.ADMIN_EMAIL||"").trim().toLowerCase(),pass=process.env.AD
 async function emp(req){let t=req.get("x-device-token")||req.body?.deviceToken;if(!t)return null;let r=await q(`SELECT e.*,d.id device_id FROM employee_devices d JOIN employees e ON e.id=d.employee_id WHERE d.token_hash=$1 AND d.revoked_at IS NULL AND e.is_active=TRUE`,[sha(t)]);if(!r.rows.length)return null;await q(`UPDATE employee_devices SET last_seen_at=NOW() WHERE id=$1`,[r.rows[0].device_id]);return r.rows[0]}
 function manager(req,res,next){if(!req.session.managerId)return res.status(401).json({error:"Manager login required"});next()}
 async function state(id){let r=await q(`SELECT event_type FROM clock_events WHERE employee_id=$1 ORDER BY event_time DESC LIMIT 1`,[id]);if(!r.rows.length)return"off";return ["clock_in","break_end"].includes(r.rows[0].event_type)?"working":r.rows[0].event_type==="break_start"?"break":"off"}
-function worked(events,schedule=[]){
+function worked(events,schedule=[],autoClockOutEnabled=true){
   const days={};
   const hasSchedule=Array.isArray(schedule)&&schedule.length>0;
 
@@ -90,7 +91,7 @@ function worked(events,schedule=[]){
   const rule=scheduleByDay[d.dayOfWeek];
   let paidStart=t;
 
-  if(rule&&rule.is_working_day&&rule.normal_start_time){
+  if(autoClockOutEnabled&&rule&&rule.is_working_day&&rule.normal_start_time){
     const parts=new Intl.DateTimeFormat("en-GB",{
       timeZone:"Europe/London",
       hour:"2-digit",
@@ -170,7 +171,8 @@ async function autoOut(){
     SELECT e.id
     FROM employees e
     WHERE e.is_active=TRUE
-      AND (
+    AND e.auto_clock_out_enabled=TRUE
+        AND (
         SELECT event_type
         FROM clock_events c
         WHERE c.employee_id=e.id
@@ -424,7 +426,7 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
     const weeklyMinutes=req.body.weeklyMinutes!==undefined ? Number(req.body.weeklyMinutes) : current.weekly_minutes;
     const holidayEntitlementDays=req.body.holidayEntitlementDays!==undefined ? Number(req.body.holidayEntitlementDays) : Number(current.holiday_entitlement_days||0);
     const isActive=req.body.isActive!==undefined ? Boolean(req.body.isActive) : current.is_active;
-
+const autoClockOutEnabled=req.body.autoClockOutEnabled!==undefined ? Boolean(req.body.autoClockOutEnabled) : current.auto_clock_out_enabled;
     if(!firstName) return res.status(400).json({error:'First name is required'});
     if(!Number.isFinite(weeklyMinutes)||weeklyMinutes<=0) return res.status(400).json({error:'Weekly target is invalid'});
     if(!Number.isFinite(holidayEntitlementDays)||holidayEntitlementDays<0) return res.status(400).json({error:'Holiday entitlement is invalid'});
@@ -435,7 +437,8 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
        weekly_minutes=$3,
        is_active=$4,
        holiday_entitlement_days=$5
-   WHERE id=$6
+       auto_clock_out_enabled=$6
+   WHERE id=$7
    RETURNING *`,
   [
     firstName,
@@ -443,6 +446,7 @@ app.patch('/api/manager/employees/:id',manager,async(req,res)=>{
     Math.round(weeklyMinutes),
     isActive,
     holidayEntitlementDays,
+    autoClockOutEnabled,
     id
   ]
 );
@@ -497,8 +501,8 @@ app.post('/api/manager/employees/:id/unpair',manager,async(req,res)=>{await q(`U
 app.get('/api/manager/dashboard',manager,async(req,res)=>{await autoOut();let es=await q(`SELECT * FROM employees WHERE is_active=TRUE ORDER BY id`),out=[],ws=weekStart(),schedule=(await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows;for(const e of es.rows){let st=await state(e.id),lv=await q(`SELECT 1 FROM leave_records WHERE employee_id=$1 AND leave_date=CURRENT_DATE LIMIT 1`,[e.id]),td=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]),wk=await q(`SELECT event_type,event_time FROM clock_events WHERE employee_id=$1 AND event_time::date BETWEEN $2 AND $3 ORDER BY event_time`,[e.id,ws,addDays(ws,6)]);out.push({id:e.id,employeeNumber:e.employee_number,name:`${e.first_name} ${e.last_name}`.trim(),status:lv.rows.length?'annual leave':st,
 clockIn:td.rows.find(x=>x.event_type==='clock_in')?.event_time||null,
 clockOut:[...td.rows].reverse().find(x=>x.event_type==='clock_out')?.event_time||null,
-todayMinutes:worked(td.rows,schedule),
-weekMinutes:worked(wk.rows,schedule),weeklyTarget:e.weekly_minutes})}let p=await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id WHERE o.status='pending' ORDER BY o.submitted_at`);res.json({employees:out,pendingOvertime:p.rows})});
+todayMinutes:worked(td.rows,schedule,e.auto_clock_out_enabled),
+weekMinutes:worked(wk.rows,schedule,e.auto_clock_out_enabled),weeklyTarget:e.weekly_minutes})}let p=await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id WHERE o.status='pending' ORDER BY o.submitted_at`);res.json({employees:out,pendingOvertime:p.rows})});
 app.get('/api/manager/schedule',manager,async(req,res)=>res.json((await q(`SELECT * FROM work_schedule ORDER BY day_of_week`)).rows));
 app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
   let b=req.body;
@@ -686,7 +690,7 @@ const bankHolidayMinutes=bankHolidays.reduce((total,b)=>{
     rows.push({
       id:e.id,
       name:`${e.first_name} ${e.last_name}`.trim(),
-      regularMinutes:worked(ev.rows,schedule),
+      regularMinutes:worked(ev.rows,schedule,e.auto_clock_out_enabled),
       approvedOvertimeMinutes:a,
       pendingOvertimeMinutes:p,
       leaveMinutes:l,
