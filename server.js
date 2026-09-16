@@ -128,7 +128,7 @@ if(e.event_type==="clock_in"){
       d.breakStart=null;
   activeDayKey=null; 
   }
-
+}
   let total=0;
 
   for(const d of Object.values(days)){
