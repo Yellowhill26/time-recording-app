@@ -69,10 +69,16 @@ function worked(events,schedule=[],autoClockOutEnabled=true){
     const dow=new Date(Date.UTC(year,month-1,day,12)).getUTCDay();
     return dow===0?7:dow;
   };
-
+let activeDayKey=null;
   for(const e of events){
     const t=new Date(e.event_time);
-    const key=dayKey(t);
+    let key=dayKey(t);
+
+if(e.event_type==="clock_in"){
+  activeDayKey=key;
+}else if(activeDayKey){
+  key=activeDayKey;
+}
 
     if(!days[key]){
       days[key]={
@@ -120,7 +126,7 @@ function worked(events,schedule=[],autoClockOutEnabled=true){
       d.total+=Math.max(0,Math.round((t-d.start)/60000));
       d.start=null;
       d.breakStart=null;
-    }
+  activeDayKey=null; 
   }
 
   let total=0;
@@ -636,21 +642,28 @@ const bankHolidays=(await q(`
         AND (event_time AT TIME ZONE 'Europe/London')::date
             BETWEEN $2::date AND $3::date
       ORDER BY event_time
-    `,[e.id,start,end]);
+   `,[e.id,start,addDays(end,1)]);
 
     const daily=await q(`
-      SELECT
-        (event_time AT TIME ZONE 'Europe/London')::date::text AS work_date,
-        MIN(event_time) FILTER (WHERE event_type='clock_in') AS clock_in,
-        MAX(event_time) FILTER (WHERE event_type='clock_out') AS clock_out
-      FROM clock_events
-      WHERE employee_id=$1
-        AND (event_time AT TIME ZONE 'Europe/London')::date
-            BETWEEN $2::date AND $3::date
-      GROUP BY (event_time AT TIME ZONE 'Europe/London')::date
-      ORDER BY (event_time AT TIME ZONE 'Europe/London')::date
-    `,[e.id,start,end]);
-
+  SELECT
+    (ci.event_time AT TIME ZONE 'Europe/London')::date::text AS work_date,
+    ci.event_time AS clock_in,
+    (
+      SELECT co.event_time
+      FROM clock_events co
+      WHERE co.employee_id=ci.employee_id
+        AND co.event_type='clock_out'
+        AND co.event_time>ci.event_time
+      ORDER BY co.event_time
+      LIMIT 1
+    ) AS clock_out
+  FROM clock_events ci
+  WHERE ci.employee_id=$1
+    AND ci.event_type='clock_in'
+    AND (ci.event_time AT TIME ZONE 'Europe/London')::date
+        BETWEEN $2::date AND $3::date
+  ORDER BY ci.event_time
+`,[e.id,start,end]);
     const a=(await q(`
       SELECT COALESCE(SUM(minutes),0)::int n
       FROM overtime_requests
