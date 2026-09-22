@@ -536,7 +536,7 @@ app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
 });
 app.get('/api/manager/overtime',manager,async(req,res)=>res.json((await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END,o.submitted_at DESC`)).rows));
 app.post('/api/manager/overtime/:id/review',manager,async(req,res)=>{if(!['approved','rejected'].includes(req.body.status))return res.status(400).json({error:'Invalid status'});await q(`UPDATE overtime_requests SET status=$2,reviewed_at=NOW(),reviewed_by=$3,manager_note=$4 WHERE id=$1`,[Number(req.params.id),req.body.status,req.session.managerId,String(req.body.note||'').slice(0,500)]);res.json({ok:true})});
-app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id WHERE l.leave_date>=CURRENT_DATE-INTERVAL '60 days' ORDER BY l.leave_date DESC`)).rows));
+app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id ORDER BY l.leave_date DESC`)).rows));
 app.get('/api/manager/leave-summary',manager,async(req,res)=>{
   const year=Number(req.query.year)||new Date().getFullYear();
 
