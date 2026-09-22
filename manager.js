@@ -357,9 +357,13 @@ window.bankHolidays=bankHolidays;
         </div>
 
         <div>
-          <label>Date</label>
+          <label>From date</label>
           <input type="date" id="leaveDate" onchange="updateLeaveHours()">
         </div>
+        <div>
+    <label>To date</label>
+    <input type="date" id="leaveToDate">
+</div>
 <div>
   <label>Leave amount</label>
   <select id="leaveAmount" onchange="updateLeaveHours()">
@@ -451,6 +455,7 @@ window.bankHolidays=bankHolidays;
 </div>
 `;
    $("leaveDate").value=new Date().toISOString().slice(0,10);
+   $("leaveToDate").value=$("leaveDate").value;
   updateLeaveHours();
 }
 window.toggleLeaveHistory=id=>{
@@ -498,20 +503,43 @@ window.toggleLeaveHistory=id=>{
 window.updateLeaveHours=updateLeaveHours;
 
 window.addLeave=async()=>{
+  const fromDate=$("leaveDate").value;
+  const toDate=$("leaveToDate").value||fromDate;
+
+  if(!fromDate)return alert("Please select a From date");
+  if(toDate<fromDate)return alert("To date cannot be before From date");
+
+  const current=new Date(fromDate+"T12:00:00");
+  const end=new Date(toDate+"T12:00:00");
+
+  while(current<=end){
+const leaveDate=current.toISOString().slice(0,10);
+const jsDay=current.getDay();
+const day=jsDay===0?7:jsDay;
+const scheduleDay=(window.leaveSchedule||[]).find(s=>Number(s.day_of_week)===day);
+
+if(scheduleDay && scheduleDay.is_working_day){
+const [sh,sm]=String(scheduleDay.normal_start_time).split(":").map(Number);
+const [fh,fm]=String(scheduleDay.automatic_finish_time).split(":").map(Number);
+const fullDayMinutes=(fh*60+fm)-(sh*60+sm)-Number(scheduleDay.unpaid_break_minutes||0);
+const minutesCredit=Math.round(fullDayMinutes*Number($("leaveAmount").value||1));  
   await api("/api/manager/leave",{
-    method:"POST",
-    body:JSON.stringify({
-      employeeId:$("leaveEmp").value,
-      leaveDate:$("leaveDate").value,
-      leaveAmount:Number($("leaveAmount").value||1),
-      minutesCredit:Math.round(Number($("leaveHours").value)*60),
-      notes:$("leaveNote").value
-    })
-  });
+      method:"POST",
+      body:JSON.stringify({
+        employeeId:$("leaveEmp").value,
+        leaveDate,
+        leaveAmount:Number($("leaveAmount").value||1),
+        minutesCredit,
+        notes:$("leaveNote").value
+      })
+    });
+}
+    current.setDate(current.getDate()+1);
+  }
 
   loadLeave();
 };
-window.addBankHoliday=async()=>{
+window.addBankHoliday=async()=>{ 
   const holidayDate=$("bankHolidayDate").value;
   const name=$("bankHolidayName").value.trim();
 
