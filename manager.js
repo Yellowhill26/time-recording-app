@@ -15,10 +15,13 @@ $("logout").onclick=async()=>{await api("/api/manager/logout",{method:"POST"});l
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.tab).classList.add("active");({dashboard:loadDashboard,employees:loadEmployees,schedule:loadSchedule,overtime:loadOvertime,leave:loadLeave,corrections:loadCorrections,weekly:loadWeekly}[b.dataset.tab])();});
 
 async function loadDashboard(){const d=await api("/api/manager/dashboard");const working=d.employees.filter(e=>e.status==="working").length;const leave=d.employees.filter(e=>e.status==="annual leave").length;
-$("dashboard").innerHTML=`<div class="grid three"><div class="card"><div class="muted">Working now</div><div class="kpi">${working}</div></div><div class="card"><div class="muted">Annual leave today</div><div class="kpi">${leave}</div></div><div class="card"><div class="muted">Overtime awaiting approval</div><div class="kpi">${d.pendingOvertime.length}</div></div></div>
+$("dashboard").innerHTML=`<div class="grid three"><div class="card"><div class="muted">Working now</div><div class="kpi">${working}</div></div><div class="card"><div class="muted">Annual leave today</div><div class="kpi">${leave}</div></div><div class="card" onclick="openOvertimeTab()" style="cursor:pointer"><div class="muted">Overtime awaiting approval</div><div class="kpi">${d.pendingOvertime.length}</div></div></div>
 <div class="card"><h2>Team today</h2><table><tr><th>Employee</th><th>Status</th><th>Clocked in</th><th>Clocked out</th><th>Today</th><th>This week</th></tr>${d.employees.map(e=>`<tr><td>${esc(e.name)}</td><td><span class="pill ${e.status.replaceAll(" ","-")}">${esc(e.status)}</span></td><td>${e.clockIn?new Date(e.clockIn).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"--"}</td>
 <td>${e.clockOut?new Date(e.clockOut).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"--"}</td><td>${hrs(e.todayMinutes)}</td><td>${hrs(e.weekMinutes)} / ${hrs(e.weeklyTarget)}</td></tr>`).join("")}</table></div>`;}
-
+window.openOvertimeTab=()=>{
+  const tab=document.querySelector('.tab[data-tab="overtime"]');
+  if(tab)tab.click();
+};
 function nextEmployeeNumber(rows){
   const nums=rows.map(e=>Number(String(e.employee_number||"").match(/(\d+)$/)?.[1]||0));
   const next=Math.max(0,...nums)+1;
