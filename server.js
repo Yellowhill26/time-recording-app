@@ -535,6 +535,74 @@ app.put('/api/manager/schedule/:day',manager,async(req,res)=>{
   res.json({ok:true});
 });
 app.get('/api/manager/overtime',manager,async(req,res)=>res.json((await q(`SELECT o.*,e.first_name,e.last_name FROM overtime_requests o JOIN employees e ON e.id=o.employee_id ORDER BY CASE o.status WHEN 'pending' THEN 0 ELSE 1 END,o.submitted_at DESC`)).rows));
+app.get('/api/manager/overtime-summary',manager,async(req,res)=>{
+  try{
+    const from=String(req.query.from||'');
+    const to=String(req.query.to||'');
+
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)){
+      return res.status(400).json({error:'Valid From and To dates are required'});
+    }
+
+    if(to<from){
+      return res.status(400).json({error:'To date cannot be before From date'});
+    }
+
+    const r=await q(`
+      SELECT
+        e.id AS employee_id,
+        e.first_name,
+        e.last_name,
+        o.id,
+        o.work_date::text AS work_date,
+        o.start_time,
+        o.finish_time,
+        o.minutes,
+        o.reason
+      FROM overtime_requests o
+      JOIN employees e ON e.id=o.employee_id
+      WHERE o.status='approved'
+        AND o.work_date BETWEEN $1::date AND $2::date
+      ORDER BY e.id,o.work_date,o.start_time
+    `,[from,to]);
+
+    const employees={};
+
+    for(const row of r.rows){
+      if(!employees[row.employee_id]){
+        employees[row.employee_id]={
+          id:row.employee_id,
+          name:`${row.first_name} ${row.last_name}`.trim(),
+          totalMinutes:0,
+          entries:[]
+        };
+      }
+
+      employees[row.employee_id].totalMinutes+=Number(row.minutes||0);
+
+      employees[row.employee_id].entries.push({
+        id:row.id,
+        date:row.work_date,
+        startTime:String(row.start_time).slice(0,5),
+        finishTime:String(row.finish_time).slice(0,5),
+        minutes:Number(row.minutes||0),
+        reason:row.reason||''
+      });
+    }
+
+    const rows=Object.values(employees);
+
+    res.json({
+      from,
+      to,
+      totalMinutes:rows.reduce((total,e)=>total+e.totalMinutes,0),
+      rows
+    });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:'Could not load overtime summary'});
+  }
+});
 app.post('/api/manager/overtime/:id/review',manager,async(req,res)=>{if(!['approved','rejected'].includes(req.body.status))return res.status(400).json({error:'Invalid status'});await q(`UPDATE overtime_requests SET status=$2,reviewed_at=NOW(),reviewed_by=$3,manager_note=$4 WHERE id=$1`,[Number(req.params.id),req.body.status,req.session.managerId,String(req.body.note||'').slice(0,500)]);res.json({ok:true})});
 app.get('/api/manager/leave',manager,async(req,res)=>res.json((await q(`SELECT l.*,e.first_name,e.last_name FROM leave_records l JOIN employees e ON e.id=l.employee_id ORDER BY l.leave_date DESC`)).rows));
 app.get('/api/manager/leave-summary',manager,async(req,res)=>{
