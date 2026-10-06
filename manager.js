@@ -1,6 +1,11 @@
 const $=id=>document.getElementById(id);
 const days=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 function hrs(m){return `${Math.floor((m||0)/60)}h ${String((m||0)%60).padStart(2,"0")}m`;}
+function ukDate(s){
+  if(!s)return "";
+  const [y,m,d]=String(s).slice(0,10).split("-");
+  return `${Number(d)}/${Number(m)}/${y}`;
+}
 function esc(s=""){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 async function api(url,opts={}){opts.headers={...(opts.headers||{}),"Content-Type":"application/json"};const r=await fetch(url,opts);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed");return d;}
 async function init(){try{await api("/api/manager/session");showApp();}catch{}}
@@ -580,7 +585,7 @@ async function loadWeekly(weekStart=null){
       <div class="actions" style="justify-content:space-between">
         <div>
   <h2 style="margin:0">Weekly review</h2>
-  <div class="muted">${d.weekStart} to ${d.weekEnd}</div>
+  <div class="muted">${ukDate(d.weekStart)} to ${ukDate(d.weekEnd)}</div>
   <div style="margin-top:10px;display:flex;gap:8px">
     <button class="btn small secondary" onclick="changeWeekly(-7)">← Previous week</button>
     <button class="btn small secondary" onclick="changeWeekly(7)">Next week →</button>
