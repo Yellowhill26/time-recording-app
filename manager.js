@@ -256,7 +256,30 @@ async function loadOvertime(){
     grouped[key].requests.push(o);
   });
 
-  $("overtime").innerHTML=`
+$("overtime").innerHTML=`
+    <div class="card">
+      <h2>Overtime summary</h2>
+      <p class="muted">View approved overtime for any date range.</p>
+
+      <div class="grid two">
+        <div>
+          <label>From date</label>
+          <input type="date" id="otSummaryFrom">
+        </div>
+        <div>
+          <label>To date</label>
+          <input type="date" id="otSummaryTo">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="loadOvertimeSummary()">View summary</button>
+        <button class="btn secondary" onclick="downloadOvertimeSummaryCSV()">Download CSV</button>
+      </div>
+
+      <div id="overtimeSummary"></div>
+    </div>
+
     <div class="card">
       <h2>Overtime requests</h2>
 
@@ -293,9 +316,141 @@ async function loadOvertime(){
           `).join("")
         : `<p class="muted">No overtime requests recorded.</p>`
       }
-    </div>
+     </div>
   `;
+
+  const now=new Date();
+  const firstDay=new Date(now.getFullYear(),now.getMonth(),1);
+  const lastDay=new Date(now.getFullYear(),now.getMonth()+1,0);
+
+  const localDate=d=>{
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,"0");
+    const day=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  };
+
+  $("otSummaryFrom").value=localDate(firstDay);
+  $("otSummaryTo").value=localDate(lastDay);
 }
+window.loadOvertimeSummary=async()=>{
+  const from=$("otSummaryFrom").value;
+  const to=$("otSummaryTo").value;
+
+  if(!from || !to){
+    alert("Please select a From date and To date.");
+    return;
+  }
+
+  if(to<from){
+    alert("To date cannot be before From date.");
+    return;
+  }
+
+  try{
+    const d=await api(`/api/manager/overtime-summary?from=${from}&to=${to}`);
+    window.currentOvertimeSummary=d;
+
+    $("overtimeSummary").innerHTML=`
+      <h3>Approved overtime: ${ukDate(d.from)} to ${ukDate(d.to)}</h3>
+
+      ${d.rows.length ? `
+        <table>
+          <tr>
+            <th>Employee</th>
+            <th>Approved overtime</th>
+          </tr>
+
+          ${d.rows.map(e=>`
+            <tr>
+              <td>
+                <details>
+                  <summary style="cursor:pointer;font-weight:600">
+                    ${esc(e.name)}
+                  </summary>
+
+                  <table style="margin-top:10px">
+                    <tr>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Duration</th>
+                      <th>Reason</th>
+                    </tr>
+
+                    ${e.entries.map(o=>`
+                      <tr>
+                        <td>${ukDate(o.date)}</td>
+                        <td>${o.startTime}–${o.finishTime}</td>
+                        <td>${hrs(o.minutes)}</td>
+                        <td>${esc(o.reason||"")}</td>
+                      </tr>
+                    `).join("")}
+                  </table>
+                </details>
+              </td>
+              <td><strong>${hrs(e.totalMinutes)}</strong></td>
+            </tr>
+          `).join("")}
+
+          <tr>
+            <td><strong>Total</strong></td>
+            <td><strong>${hrs(d.totalMinutes)}</strong></td>
+          </tr>
+        </table>
+      ` : `<p class="muted">No approved overtime recorded for this date range.</p>`}
+    `;
+  }catch(e){
+    $("overtimeSummary").innerHTML=
+      `<div class="message error">${esc(e.message)}</div>`;
+  }
+};
+window.downloadOvertimeSummaryCSV=async()=>{
+  const from=$("otSummaryFrom").value;
+  const to=$("otSummaryTo").value;
+
+  if(!from || !to){
+    alert("Please select a From date and To date.");
+    return;
+  }
+
+  if(to<from){
+    alert("To date cannot be before From date.");
+    return;
+  }
+
+  try{
+    const d=await api(`/api/manager/overtime-summary?from=${from}&to=${to}`);
+
+    const cell=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+
+    const lines=[
+      ["Employee","Date","Start","Finish","Duration","Reason"],
+      ...d.rows.flatMap(e=>
+        e.entries.map(o=>[
+          e.name,
+          ukDate(o.date),
+          o.startTime,
+          o.finishTime,
+          hrs(o.minutes),
+          o.reason||""
+        ])
+      )
+    ];
+
+    const csv=lines.map(row=>row.map(cell).join(",")).join("\r\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+
+    a.href=url;
+    a.download=`overtime-${from}-to-${to}.csv`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert(`Could not download overtime summary: ${e.message}`);
+  }
+};
 window.reviewOt=async(id,status)=>{await api(`/api/manager/overtime/${id}/review`,{method:"POST",body:JSON.stringify({status})});loadOvertime();};
 
 function leaveHoursForDate(dateString){
