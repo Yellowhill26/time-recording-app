@@ -118,7 +118,7 @@ function weeklyDeductions(events, schedule = []) {
       : 0;
 
     if (d.worked && d.grossMinutes >= 360 && unpaidBreak > 0) {
-      total += Math.max(unpaidBreak, d.breakMinutes);
+    total += unpaidBreak + d.breakMinutes;
     } else {
       total += d.breakMinutes;
     }
@@ -229,7 +229,7 @@ if(e.event_type==="clock_in"){
       : 30;
 
     if(d.worked && d.total>=360 && unpaidBreak>0){
-      d.total-=Math.max(unpaidBreak,d.breakMinutes);
+      d.total-=unpaidBreak+d.breakMinutes;
     }else if(d.breakMinutes>0){
       d.total-=d.breakMinutes;
     }
