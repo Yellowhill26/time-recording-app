@@ -759,7 +759,7 @@ async function loadWeekly(weekStart=null){
           <th>Approved OT</th>
           <th>Pending OT</th>
           <th>Annual leave</th>
-          <th>Bank holiday</th>
+         <th>Deductions</th>
           <th>Total hours</th>
           <th>Target</th>
         </tr>
@@ -771,7 +771,7 @@ async function loadWeekly(weekStart=null){
     <td>${hrs(r.approvedOvertimeMinutes)}</td>
     <td>${hrs(r.pendingOvertimeMinutes)}</td>
     <td>${hrs(r.leaveMinutes)}</td>
-    <td>${hrs(r.bankHolidayMinutes||0)}</td>    
+    <td>${hrs(r.deductionMinutes||0)}</td>    
     <td><strong>${hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes+(r.bankHolidayMinutes||0))}</strong></td>
     <td>${hrs(r.weeklyTarget)}</td>
   </tr>
@@ -811,14 +811,14 @@ window.downloadWeeklyCSV=async()=>{
   const cell=v=>`"${String(v??"").replace(/"/g,'""')}"`;
 
   const lines=[
-    ["Employee","Regular","Approved OT","Pending OT","Annual leave","Bank holiday","Total hours","Target"],
+    ["Employee","Regular","Approved OT","Pending OT","Annual leave","Deductions","Total hours","Target"],
     ...d.rows.map(r=>[
       r.name,
       hrs(r.regularMinutes),
       hrs(r.approvedOvertimeMinutes),
       hrs(r.pendingOvertimeMinutes),
       hrs(r.leaveMinutes),
-      hrs(r.bankHolidayMinutes||0),
+     hrs(r.deductionMinutes||0),
       hrs(r.regularMinutes+r.approvedOvertimeMinutes+r.leaveMinutes+(r.bankHolidayMinutes||0)),
       hrs(r.weeklyTarget)
     ])
