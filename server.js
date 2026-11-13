@@ -43,6 +43,90 @@ let email=(process.env.ADMIN_EMAIL||"").trim().toLowerCase(),pass=process.env.AD
 async function emp(req){let t=req.get("x-device-token")||req.body?.deviceToken;if(!t)return null;let r=await q(`SELECT e.*,d.id device_id FROM employee_devices d JOIN employees e ON e.id=d.employee_id WHERE d.token_hash=$1 AND d.revoked_at IS NULL AND e.is_active=TRUE`,[sha(t)]);if(!r.rows.length)return null;await q(`UPDATE employee_devices SET last_seen_at=NOW() WHERE id=$1`,[r.rows[0].device_id]);return r.rows[0]}
 function manager(req,res,next){if(!req.session.managerId)return res.status(401).json({error:"Manager login required"});next()}
 async function state(id){let r=await q(`SELECT event_type FROM clock_events WHERE employee_id=$1 ORDER BY event_time DESC LIMIT 1`,[id]);if(!r.rows.length)return"off";return ["clock_in","break_end"].includes(r.rows[0].event_type)?"working":r.rows[0].event_type==="break_start"?"break":"off"}
+function weeklyDeductions(events, schedule = []) {
+  const scheduleByDay = {};
+  for (const r of schedule) {
+    scheduleByDay[Number(r.day_of_week)] = r;
+  }
+
+  const days = {};
+  let activeDayKey = null;
+
+  const dayKey = date => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+
+    const get = type => parts.find(p => p.type === type).value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  };
+
+  for (const e of events) {
+    const time = new Date(e.event_time);
+    let key = dayKey(time);
+
+    if (e.event_type === "clock_in") {
+      activeDayKey = key;
+    } else if (activeDayKey) {
+      key = activeDayKey;
+    }
+
+    if (!days[key]) {
+      days[key] = {
+        start: null,
+        breakStart: null,
+        breakMinutes: 0,
+        grossMinutes: 0,
+        worked: false
+      };
+    }
+
+    const d = days[key];
+
+    if (e.event_type === "clock_in") {
+      d.start = time;
+      d.worked = true;
+    } else if (e.event_type === "break_start" && d.start && !d.breakStart) {
+      d.breakStart = time;
+    } else if (e.event_type === "break_end" && d.breakStart) {
+      d.breakMinutes += Math.max(0, Math.round((time - d.breakStart) / 60000));
+      d.breakStart = null;
+    } else if (e.event_type === "clock_out" && d.start) {
+      d.grossMinutes += Math.max(0, Math.round((time - d.start) / 60000));
+      d.start = null;
+      d.breakStart = null;
+      activeDayKey = null;
+    }
+  }
+
+  let total = 0;
+
+  for (const [key, d] of Object.entries(days)) {
+    if (d.start) {
+      d.grossMinutes += Math.max(0, Math.round((new Date() - d.start) / 60000));
+    }
+
+    const date = new Date(key + "T12:00:00");
+    const day = date.getDay() || 7;
+    const rule = scheduleByDay[day];
+
+    const unpaidBreak = rule && rule.is_working_day
+      ? Math.max(0, Number(rule.unpaid_break_minutes ?? 30))
+      : 0;
+
+    if (d.worked && d.grossMinutes >= 360 && unpaidBreak > 0) {
+      total += Math.max(unpaidBreak, d.breakMinutes);
+    } else {
+      total += d.breakMinutes;
+    }
+  }
+
+  return total;
+}
+
 function worked(events,schedule=[],autoClockOutEnabled=true){
   const days={};
   const hasSchedule=Array.isArray(schedule)&&schedule.length>0;
@@ -772,6 +856,7 @@ const bankHolidayMinutes=bankHolidays.reduce((total,b)=>{
       id:e.id,
       name:`${e.first_name} ${e.last_name}`.trim(),
       regularMinutes:worked(ev.rows,schedule,e.auto_clock_out_enabled),
+      deductionMinutes:weeklyDeductions(ev.rows,schedule),
       approvedOvertimeMinutes:a,
       pendingOvertimeMinutes:p,
       leaveMinutes:l,
