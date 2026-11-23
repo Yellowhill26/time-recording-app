@@ -621,6 +621,7 @@ window.bankHolidays=bankHolidays;
    $("leaveToDate").value=$("leaveDate").value;
   updateLeaveHours();
 }
+
 window.toggleLeaveHistory=id=>{
   const row=document.getElementById(`leaveHistory${id}`);
   const content=document.getElementById(`leaveHistoryContent${id}`);
@@ -645,13 +646,16 @@ window.toggleLeaveHistory=id=>{
           <th>Date</th>
           <th>Leave amount</th>
           <th>Credit</th>
+          <th>Note</th>
           <th></th>
         </tr>
+
         ${records.map(l=>`
           <tr>
-            <td>${String(l.leave_date).slice(0,10)}</td>
+            <td>${ukDate(l.leave_date)}</td>
             <td>${Number(l.leave_amount)===0.5 ? "Half day" : "Full day"}</td>
             <td>${hrs(l.minutes_credit)}</td>
+            <td>${esc(l.notes||"—")}</td>
             <td>
               <button class="btn small danger" onclick="removeLeave(${l.id})">Remove</button>
             </td>
@@ -663,6 +667,7 @@ window.toggleLeaveHistory=id=>{
 
   row.style.display="";
 };
+
 window.updateLeaveHours=updateLeaveHours;
 
 window.addLeave=async()=>{
