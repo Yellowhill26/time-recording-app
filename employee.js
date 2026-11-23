@@ -20,7 +20,9 @@ async function api(url, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw Error(data.error || "Request failed");
+    const error = new Error(data.error || "Request failed");
+    error.status = response.status;
+    throw error;
   }
 
   return data;
@@ -56,59 +58,122 @@ function escapeHtml(value) {
   })[char]);
 }
 
-// Display the employee's own overtime requests
+// =====================================
+// MY OVERTIME HISTORY
+// =====================================
+
+let overtimeRequests = [];
+let overtimeVisible = 5;
+
+function displayOvertime() {
+  const container = $("myOvertime");
+  if (!container) return;
+
+  if (!overtimeRequests.length) {
+    container.textContent = "No overtime requests submitted yet.";
+    return;
+  }
+
+  const visible = overtimeRequests.slice(0, overtimeVisible);
+
+  container.innerHTML = visible.map(r => {
+    const status = String(r.status || "pending").toLowerCase();
+
+    const colour = status === "approved"
+      ? "#218447"
+      : status === "rejected"
+        ? "#c0392b"
+        : "#a66a00";
+
+    const label = status === "approved"
+      ? "✓ Approved"
+      : status === "rejected"
+        ? "✕ Rejected"
+        : "⏳ Pending";
+
+    return `
+      <div style="border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <strong>${escapeHtml(formatDate(r.work_date))}</strong>
+          <span style="color:${colour};font-weight:bold;">
+            ${label}
+          </span>
+        </div>
+
+        <div style="margin-top:8px;">
+          ${escapeHtml(String(r.start_time).slice(0, 5))}
+          –
+          ${escapeHtml(String(r.finish_time).slice(0, 5))}
+          <strong>(${formatHours(r.minutes)})</strong>
+        </div>
+
+        ${r.reason
+          ? `<div class="muted" style="margin-top:5px;">
+               Reason: ${escapeHtml(r.reason)}
+             </div>`
+          : ""}
+      </div>
+    `;
+  }).join("");
+
+  // Show how many requests are visible
+  const count = document.createElement("p");
+  count.className = "muted";
+  count.textContent =
+    `Showing ${visible.length} of ${overtimeRequests.length} requests`;
+  container.appendChild(count);
+
+  // Show more / Show less buttons
+  if (overtimeRequests.length > 5) {
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    if (overtimeVisible < overtimeRequests.length) {
+      const more = document.createElement("button");
+      more.className = "btn secondary";
+      more.textContent = "Show more";
+
+      more.onclick = () => {
+        overtimeVisible += 5;
+        displayOvertime();
+      };
+
+      actions.appendChild(more);
+    }
+
+    if (overtimeVisible > 5) {
+      const less = document.createElement("button");
+      less.className = "btn secondary";
+      less.textContent = "Show less";
+
+      less.onclick = () => {
+        overtimeVisible = 5;
+        displayOvertime();
+      };
+
+      actions.appendChild(less);
+    }
+
+    container.appendChild(actions);
+  }
+}
+
 async function loadOvertime() {
   const container = $("myOvertime");
   if (!container) return;
 
   try {
-    const requests = await api("/api/employee/overtime");
-
-    if (!requests.length) {
-      container.textContent = "No overtime requests submitted yet.";
-      return;
-    }
-
-    container.innerHTML = requests.map(r => {
-      const status = String(r.status || "pending").toLowerCase();
-
-      const colour = status === "approved"
-        ? "#218447"
-        : status === "rejected"
-          ? "#c0392b"
-          : "#a66a00";
-
-      const label = status === "approved"
-        ? "✓ Approved"
-        : status === "rejected"
-          ? "✕ Rejected"
-          : "⏳ Pending";
-
-      return `
-        <div style="border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-            <strong>${escapeHtml(formatDate(r.work_date))}</strong>
-            <span style="color:${colour};font-weight:bold;">${label}</span>
-          </div>
-          <div style="margin-top:8px;">
-            ${escapeHtml(String(r.start_time).slice(0,5))}
-            –
-            ${escapeHtml(String(r.finish_time).slice(0,5))}
-            <strong>(${formatHours(r.minutes)})</strong>
-          </div>
-          ${r.reason
-            ? `<div class="muted" style="margin-top:5px;">Reason: ${escapeHtml(r.reason)}</div>`
-            : ""}
-        </div>
-      `;
-    }).join("");
-
+    overtimeRequests = await api("/api/employee/overtime");
+    displayOvertime();
   } catch (error) {
     container.textContent = "Could not load overtime requests.";
   }
 }
 
-// Load employee information
+// =====================================
+// LOAD EMPLOYEE INFORMATION
+// =====================================
+
 async function load() {
   if (!token) {
     $("pairCard").style.display = "block";
@@ -148,8 +213,7 @@ async function load() {
     await loadOvertime();
 
   } catch (error) {
-    // Only remove pairing if the device is no longer authorised.
-    if (error.message === "This phone is not paired") {
+    if (error.status === 401) {
       localStorage.removeItem("dpawson_device_token");
       token = "";
       $("pairCard").style.display = "block";
@@ -160,7 +224,10 @@ async function load() {
   }
 }
 
-// Pair employee phone
+// =====================================
+// PAIR EMPLOYEE PHONE
+// =====================================
+
 $("pairBtn").onclick = async () => {
   try {
     const d = await api("/api/employee/pair", {
@@ -180,14 +247,19 @@ $("pairBtn").onclick = async () => {
   }
 };
 
-// Clocking and breaks
+// =====================================
+// CLOCKING AND BREAKS
+// =====================================
+
 async function ev(type) {
   try {
     await api("/api/employee/event", {
       method: "POST",
       body: JSON.stringify({ type })
     });
+
     load();
+
   } catch (error) {
     msg($("eventMsg"), error.message, true);
   }
@@ -198,7 +270,11 @@ $("clockOut").onclick = () => ev("clock_out");
 $("breakStart").onclick = () => ev("break_start");
 $("breakEnd").onclick = () => ev("break_end");
 
-// Default overtime date to today (UK)
+// =====================================
+// OVERTIME SUBMISSION
+// =====================================
+
+// Default overtime date to today in the UK
 $("otDate").value = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/London",
   year: "numeric",
@@ -206,7 +282,6 @@ $("otDate").value = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit"
 }).format(new Date());
 
-// Submit overtime
 $("otSubmit").onclick = async () => {
   const button = $("otSubmit");
   button.disabled = true;
@@ -242,5 +317,8 @@ $("otSubmit").onclick = async () => {
   }
 };
 
-// Start the app
+// =====================================
+// START APP
+// =====================================
+
 load();
