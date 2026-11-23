@@ -310,6 +310,33 @@ app.post('/api/employee/pair',async(req,res)=>{let c=String(req.body.code||'').t
 app.get('/api/employee/me',async(req,res)=>{await autoOut();let e=await emp(req);if(!e)return res.status(401).json({error:'This phone is not paired'});let today=await q(`SELECT event_type,event_time,source FROM clock_events WHERE employee_id=$1 AND event_time::date=CURRENT_DATE ORDER BY event_time`,[e.id]);let p=await q(`SELECT COUNT(*)::int n FROM overtime_requests WHERE employee_id=$1 AND status='pending'`,[e.id]);res.json({employee:{id:e.id,name:`${e.first_name} ${e.last_name}`.trim(),employeeNumber:e.employee_number},state:await state(e.id),today:today.rows,pendingOvertime:p.rows[0].n})});
 app.post('/api/employee/event',async(req,res)=>{let e=await emp(req);if(!e)return res.status(401).json({error:'This phone is not paired'});let type=req.body.type,s=await state(e.id),allow={off:['clock_in'],working:['clock_out','break_start'],break:['break_end','clock_out']};if(!allow[s]?.includes(type))return res.status(400).json({error:`Cannot ${String(type).replace('_',' ')} while status is ${s}`});await q(`INSERT INTO clock_events(employee_id,event_type) VALUES($1,$2)`,[e.id,type]);await audit('employee',e.id,type,{});res.json({ok:true,state:await state(e.id)})});
 app.post('/api/employee/overtime',async(req,res)=>{let e=await emp(req);if(!e)return res.status(401).json({error:'This phone is not paired'});let {workDate,startTime,finishTime,reason}=req.body;if(!workDate||!startTime||!finishTime)return res.status(400).json({error:'Date, start and finish time are required'});let mins=hrsBetween(`${workDate}T${startTime}:00`,`${workDate}T${finishTime}:00`);if(mins<=0||mins>720)return res.status(400).json({error:'Overtime must be between 1 minute and 12 hours'});let r=await q(`INSERT INTO overtime_requests(employee_id,work_date,start_time,finish_time,minutes,reason) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[e.id,workDate,startTime,finishTime,mins,String(reason||'').slice(0,500)]);await audit('employee',e.id,'overtime_submitted',{requestId:r.rows[0].id});res.json({ok:true})});
+app.get('/api/employee/overtime',async(req,res)=>{
+  try{
+    const e=await emp(req);
+    if(!e)return res.status(401).json({error:'This phone is not paired'});
+
+    const r=await q(`
+      SELECT
+        id,
+        work_date::text AS work_date,
+        start_time,
+        finish_time,
+        minutes,
+        reason,
+        status,
+        submitted_at
+      FROM overtime_requests
+      WHERE employee_id=$1
+      ORDER BY work_date DESC,submitted_at DESC
+      LIMIT 100
+    `,[e.id]);
+
+    res.json(r.rows);
+  }catch(err){
+    console.error(err);
+    res.status(500).json({error:'Could not load overtime history'});
+  }
+});
 app.post('/api/manager/login',async(req,res)=>{let email=String(req.body.email||'').trim().toLowerCase(),r=await q(`SELECT * FROM manager_users WHERE email=$1 AND is_active=TRUE`,[email]);if(!r.rows.length||!(await bcrypt.compare(String(req.body.password||''),r.rows[0].password_hash)))return res.status(401).json({error:'Incorrect email or password'});req.session.managerId=r.rows[0].id;req.session.managerName=r.rows[0].name;res.json({ok:true,name:r.rows[0].name})});
 app.post('/api/manager/logout',(req,res)=>req.session.destroy(()=>res.json({ok:true})));app.get('/api/manager/session',(req,res)=>req.session.managerId?res.json({id:req.session.managerId,name:req.session.managerName}):res.status(401).json({error:'Not signed in'}));
 app.get('/api/manager/employees',manager,async(req,res)=>{
